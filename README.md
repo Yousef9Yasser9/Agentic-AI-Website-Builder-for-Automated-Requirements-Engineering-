@@ -428,3 +428,7 @@ These three README files are the maintained project documentation. Historical
 status reports and temporary Markdown notes have been removed. Generated app
 READMEs and checkpoint files such as `srs.md` are runtime artifacts, not
 maintained source documentation.
+
+## ?? Project Demo
+
+[?? Watch Project Demo](https://drive.google.com/file/d/1j1P60JvhCxq1vTNt0lA-ReeMu72F-Xfy/view?usp=sharing)
