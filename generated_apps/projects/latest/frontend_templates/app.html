@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en" data-bs-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Personal Notes App</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bs-primary: #f97316;
+  --bs-primary-rgb: 249,115,22;
+  --app-bg: #fff7ed;
+  --app-bg-alt: #fdf2f8;
+  --app-primary: #f97316;
+  --app-accent: #ec4899;
+  --app-secondary: #8b5cf6;
+  --app-surface: rgba(255,255,255,0.9);
+  --app-surface-solid: #ffffff;
+  --app-border: rgba(249,115,22,0.2);
+  --app-text: #431407;
+  --app-muted: #7c2d12;
+  --app-shadow: 0 18px 48px rgba(0,0,0,0.22);
+  --app-glow: 0 0 28px #f9731640;
+}
+* { box-sizing:border-box; }
+body {
+  font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  min-height:100vh;
+  background:
+    radial-gradient(circle at 12% 8%, #f9731626 0, transparent 26%),
+    radial-gradient(circle at 82% 6%, #8b5cf624 0, transparent 24%),
+    linear-gradient(135deg,var(--app-bg) 0%,var(--app-bg-alt) 62%,#1a1a2e 100%);
+  color:var(--app-text);
+}
+body.domain-school { background:linear-gradient(135deg,#eff6ff 0%,#fff7ed 48%,#dbeafe 100%); }
+body.domain-clinic { background:linear-gradient(135deg,#ecfeff 0%,#f0fdfa 52%,#ccfbf1 100%); }
+body.domain-commerce { background:linear-gradient(135deg,#fff7ed 0%,#fdf2f8 50%,#ffedd5 100%); }
+body.domain-property { background:linear-gradient(135deg,#f7fee7 0%,#ffedd5 50%,#dcfce7 100%); }
+body.domain-workflow { background:linear-gradient(135deg,#f5f3ff 0%,#ecfeff 50%,#eef2ff 100%); }
+body.domain-finance { background:linear-gradient(135deg,#f0fdf4 0%,#e0f2fe 54%,#dcfce7 100%); }
+.shell { display:grid; grid-template-columns:280px 1fr; min-height:100vh; }
+.side {
+  position:sticky; top:0; height:100vh; color:white; padding:1.35rem 1rem;
+  display:flex; flex-direction:column;
+  background:linear-gradient(180deg,rgba(15,52,96,.92) 0%,rgba(26,26,46,.96) 100%);
+  border-right:1px solid var(--app-border);
+  box-shadow:12px 0 42px rgba(0,0,0,.22);
+  backdrop-filter:blur(18px);
+}
+.brand {
+  font-family:'Outfit',sans-serif; font-size:1.35rem; font-weight:800;
+  margin-bottom:1.6rem; padding:.75rem .9rem; border-radius:14px;
+  background:linear-gradient(135deg,#f9731624,#8b5cf624);
+  border:1px solid var(--app-border); box-shadow:var(--app-glow);
+}
+.brand::before { content:"ST"; display:inline-grid; place-items:center; width:2.25rem; height:2.25rem; margin-right:.65rem; border-radius:14px; background:linear-gradient(135deg,#f97316,#ec4899); color:#fff; font-size:.75rem; box-shadow:0 0 18px #f9731666; }
+.nav { flex:1; overflow:auto; padding-right:.2rem; }
+.nav a {
+  display:flex; align-items:center; gap:.75rem; color:rgba(255,255,255,.78); text-decoration:none;
+  padding:.78rem .95rem; border-radius:12px; margin:.2rem 0; font-weight:600; font-size:.9rem;
+  border:1px solid transparent; transition:transform .2s ease, background .2s ease, border-color .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.nav a:hover { background:rgba(255,255,255,.11); color:#fff; transform:translateX(3px); border-color:var(--app-border); }
+.nav a.active { background:linear-gradient(135deg,#f973162b,#8b5cf62e); color:#fff; border-color:#f9731688; box-shadow:var(--app-glow); }
+.side .mt-auto { border-top:1px solid var(--app-border); padding-top:1rem; }
+.workspace { min-width:0; display:flex; flex-direction:column; }
+.topbar {
+  position:sticky; top:0; z-index:10; min-height:76px; display:grid; grid-template-columns:1fr minmax(240px,420px) auto; gap:1rem; align-items:center;
+  padding:1rem 1.5rem; background:var(--app-surface); border-bottom:1px solid var(--app-border); backdrop-filter:blur(18px);
+}
+.crumbs { color:var(--app-muted); font-size:.86rem; }
+.crumbs strong { color:var(--app-text); }
+.top-search { width:100%; border:1px solid var(--app-border); border-radius:999px; padding:.72rem 1rem; background:rgba(255,255,255,.72); color:var(--app-text); outline:0; }
+.top-search::placeholder { color:var(--app-muted); }
+.top-actions { display:flex; align-items:center; gap:.6rem; justify-content:flex-end; }
+.icon-btn,.user-chip { border:1px solid var(--app-border); background:rgba(255,255,255,.72); color:var(--app-text); border-radius:999px; padding:.62rem .8rem; box-shadow:0 8px 20px rgba(0,0,0,.14); }
+main { padding:1.5rem; overflow-y:auto; }
+.top,.page-hdr { display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem; flex-wrap:wrap; gap:1rem; }
+.top h1,.page-hdr h1 { font-family:'Outfit',sans-serif; font-size:1.9rem; font-weight:800; margin:0; color:var(--app-text); }
+.top p,.page-hdr p { color:var(--app-muted); margin:0; font-size:.92rem; }
+.grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:1rem; }
+.hero { position:relative; overflow:hidden; display:grid; grid-template-columns:1fr auto; gap:1rem; align-items:center; margin-bottom:1.35rem; padding:1.35rem; border-radius:24px; border:1px solid var(--app-border); background:linear-gradient(135deg,#f973161f,#ec489922),var(--app-surface); box-shadow:var(--app-shadow); }
+.hero::after { content:""; position:absolute; inset:auto -12% -45% auto; width:340px; height:340px; border-radius:999px; background:radial-gradient(circle,#ec489944,transparent 64%); pointer-events:none; }
+.hero .kicker { display:inline-flex; color:var(--app-primary); text-transform:uppercase; letter-spacing:.12em; font-size:.72rem; font-weight:900; margin-bottom:.45rem; }
+.hero h1 { color:var(--app-text); font-family:'Outfit',sans-serif; font-size:clamp(2rem,4vw,3.5rem); line-height:1; margin:0 0 .6rem; }
+.hero p { color:var(--app-muted); max-width:62ch; margin:0; }
+.hero-mark { position:relative; z-index:1; display:grid; place-items:center; width:6.2rem; height:6.2rem; border-radius:2rem; font-weight:900; font-size:1.6rem; color:#fff; background:linear-gradient(135deg,#f97316,#ec4899); box-shadow:0 22px 60px #f9731644; }
+.dashboard-grid .card { min-height:150px; display:flex; flex-direction:column; justify-content:space-between; }
+.dash-icon { width:2.75rem; height:2.75rem; display:grid; place-items:center; border-radius:16px; color:#fff; background:linear-gradient(135deg,#f97316,#8b5cf6); margin-bottom:.9rem; }
+.record-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(270px,1fr)); gap:1rem; }
+.record-card { position:relative; overflow:hidden; background:var(--app-surface); border:1px solid var(--app-border); border-radius:22px; padding:1.1rem; box-shadow:var(--app-shadow); }
+.record-card::before { content:""; position:absolute; inset:0 0 auto 0; height:5px; background:linear-gradient(90deg,#f97316,#ec4899); }
+.record-card h3 { margin:.25rem 0 .35rem; color:var(--app-text); font-family:'Outfit',sans-serif; font-size:1.15rem; }
+.record-card .meta { color:var(--app-muted); font-size:.86rem; min-height:1.2rem; }
+.record-fields { display:grid; gap:.55rem; margin:1rem 0; }
+.record-field { display:flex; justify-content:space-between; gap:1rem; padding:.58rem .7rem; border-radius:12px; background:rgba(255,255,255,.56); border:1px solid var(--app-border); }
+.record-field span:first-child { color:var(--app-muted); font-size:.76rem; text-transform:uppercase; letter-spacing:.06em; font-weight:800; }
+.record-field span:last-child { text-align:right; font-weight:700; }
+.pill { display:inline-flex; align-items:center; gap:.35rem; border-radius:999px; padding:.3rem .65rem; color:var(--app-primary); background:#f9731616; border:1px solid #f9731633; font-weight:800; font-size:.76rem; }
+.table-shell { overflow:auto; }
+.table-shell.admin-console { border-top:5px solid #f97316; }
+.empty-state { padding:2rem; text-align:center; color:var(--app-muted); border:1px dashed var(--app-border); border-radius:18px; background:var(--app-surface); }
+.card,.stat-card,.content-card {
+  background:var(--app-surface); color:var(--app-text); border-radius:16px; padding:1.25rem;
+  box-shadow:var(--app-shadow); border:1px solid var(--app-border); backdrop-filter:blur(18px);
+  transition:transform .22s ease, box-shadow .22s ease, border-color .22s ease;
+}
+.card:hover,.stat-card:hover,.content-card:hover { transform:translateY(-3px); box-shadow:var(--app-shadow),var(--app-glow); border-color:#f9731666; }
+.card h2,.stat-card h3 { font-size:.86rem; text-transform:uppercase; letter-spacing:.04em; color:var(--app-muted); margin-bottom:.5rem; }
+.stat-card .value { font-size:2rem; font-weight:800; color:#f97316; }
+.btn,.btn-primary {
+  display:inline-flex; align-items:center; justify-content:center; gap:.45rem; border:0; border-radius:12px;
+  padding:.72rem 1rem; background:linear-gradient(135deg,#f97316,#ec4899); color:#fff !important;
+  text-decoration:none; font-weight:800; box-shadow:0 12px 26px #f9731633; transition:transform .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.btn:hover,.btn-primary:hover { transform:translateY(-2px); filter:brightness(1.08); box-shadow:0 16px 34px #f973164d; }
+.btn.secondary { background:rgba(255,255,255,.1); border:1px solid var(--app-border); box-shadow:none; }
+.btn.danger { background:linear-gradient(135deg,#ef4444,#f97316); }
+label { display:block; color:var(--app-muted); font-weight:700; margin:.9rem 0 .35rem; }
+input,select,textarea,.form-control {
+  width:100%; border:1px solid var(--app-border); border-radius:12px; padding:.78rem .9rem;
+  background:rgba(255,255,255,.72); color:var(--app-text); outline:0; transition:border-color .18s ease, box-shadow .18s ease, background .18s ease;
+}
+input:focus,select:focus,textarea:focus,.form-control:focus { border-color:#f97316; box-shadow:0 0 0 .22rem #f9731626; background:rgba(255,255,255,.92); }
+form .btn[type="submit"],form button[type="submit"] { margin-top:1rem; float:right; }
+table { width:100%; color:var(--app-text); border-collapse:separate; border-spacing:0 .55rem; }
+th { font-size:.75rem; text-transform:uppercase; letter-spacing:.05em; color:var(--app-muted); border:0; }
+td { background:rgba(255,255,255,.06); border-top:1px solid var(--app-border); border-bottom:1px solid var(--app-border); padding:.78rem; }
+td:first-child { border-left:1px solid var(--app-border); border-radius:12px 0 0 12px; }
+td:last-child { border-right:1px solid var(--app-border); border-radius:0 12px 12px 0; }
+.actions { display:flex; gap:.5rem; justify-content:flex-end; flex-wrap:wrap; }
+.notice { position:fixed; right:1.5rem; bottom:1.5rem; z-index:1050; animation:slideIn .3s ease; background:var(--app-surface-solid); color:var(--app-text); border:1px solid var(--app-border); border-radius:12px; padding:.8rem 1rem; box-shadow:var(--app-shadow); }
+@keyframes slideIn { from { transform:translateY(100px); opacity:0; } to { transform:translateY(0); opacity:1; } }
+@media (max-width:900px) {
+  .shell { grid-template-columns:1fr; }
+  .side { position:relative; height:auto; }
+  .topbar { grid-template-columns:1fr; }
+  main { padding:1rem; }
+}
+</style>
+<script>window.APP_CONFIG = {"title": "Personal Notes App", "api_prefix": "/api", "theme": {"primary": "#f97316", "accent": "#ec4899", "bg": "#fff7ed", "surface": "rgba(255,255,255,0.9)", "secondary": "#8b5cf6", "bg_alt": "#fdf2f8", "text": "#431407", "text_muted": "#7c2d12", "surface_solid": "#ffffff", "border": "rgba(249,115,22,0.2)", "font_heading": "Outfit", "font_body": "Inter"}, "entities": [{"name": "Note", "resource": "notes", "label": "Note", "fields": [{"name": "title", "type": "string", "type_map": {"python": "str", "pydantic": "str", "sqlalchemy": "String(255)"}, "python_type": "str", "pydantic_type": "str", "sqlalchemy_type": "String(255)"}, {"name": "content", "type": "text", "type_map": {"python": "str", "pydantic": "str", "sqlalchemy": "Text"}, "python_type": "str", "pydantic_type": "str", "sqlalchemy_type": "Text"}], "icon": "bi-grid-1x2", "presentation": "catalog", "dashboard_roles": ["admin", "user"], "nav_roles": ["admin", "user"], "read_roles": ["admin", "user"], "write_roles": ["admin", "user"], "manage_label": "Manage Notes", "browse_label": "Browse Notes", "kind": "standard"}, {"name": "Role", "resource": "roles", "label": "Role", "fields": [{"name": "role_name", "type": "string", "type_map": {"python": "str", "pydantic": "str", "sqlalchemy": "String(255)"}, "python_type": "str", "pydantic_type": "str", "sqlalchemy_type": "String(255)"}], "icon": "bi-grid-1x2", "presentation": "catalog", "dashboard_roles": ["admin", "user"], "nav_roles": ["admin", "user"], "read_roles": ["admin", "user"], "write_roles": ["admin"], "manage_label": "Manage Roles", "browse_label": "Browse Roles", "kind": "standard"}], "nav": [{"label": "Dashboard", "path": "/", "entity": "", "mode": "dashboard", "roles": ["user"]}, {"label": "Admin Dashboard", "path": "/admin/dashboard", "entity": "", "mode": "dashboard", "roles": ["admin"]}, {"label": "Manage Notes", "path": "/ui/notes", "entity": "Note", "mode": "list", "roles": ["admin"]}, {"label": "Manage Notes", "path": "/ui/notes", "entity": "Note", "mode": "list", "roles": ["user"]}, {"label": "Manage Roles", "path": "/ui/roles", "entity": "Role", "mode": "list", "roles": ["admin"]}, {"label": "Browse Roles", "path": "/ui/roles", "entity": "Role", "mode": "list", "roles": ["user"]}], "store_purchase": true, "visual": {"domain": "commerce", "brand_mark": "ST", "hero_kicker": "Sales floor", "admin_headline": "Store control room", "user_headline": "Discover what is ready to buy", "user_view": "catalog", "admin_view": "table", "layout": "market", "shell_class": "domain-commerce layout-market", "empty_text": "Nothing here yet. Create the first record to bring this workspace to life."}};</script>
+</head>
+<body class="domain-commerce layout-market"><div class="shell"><aside class="side"><div class="brand">Personal Notes App</div><nav class="nav" id="nav"></nav><div class="mt-auto"><div class="small text-white-50 px-3 pb-2">Signed in as</div><div class="px-3 pb-3 fw-semibold" id="sideUser">User</div><a href="#" onclick="logout()" class="text-white-50 text-decoration-none small d-flex align-items-center gap-2 px-3 py-2"><i class="bi bi-box-arrow-right"></i> Sign Out</a></div></aside><div class="workspace"><header class="topbar"><div class="crumbs">Home / <strong id="crumbPage">Dashboard</strong></div><input class="top-search" id="globalSearch" placeholder="Search this workspace..." oninput="if(window.filterRows) filterRows()"><div class="top-actions"><button class="icon-btn" title="Notifications"><i class="bi bi-bell"></i></button><button class="user-chip" id="userMenu" title="User menu">Account</button></div></header><main><div id="app"></div></main></div></div><div id="notice" class="notice"></div>
+<script>
+const CFG = window.APP_CONFIG;
+const API_PREFIX = CFG.api_prefix || '/api';
+const token = () => localStorage.getItem('access_token') || '';
+const user = () => JSON.parse(localStorage.getItem('current_user') || '{}');
+const headers = () => token() ? {'Content-Type':'application/json','Authorization':'Bearer '+token()} : {'Content-Type':'application/json'};
+function flash(msg) { const n=document.getElementById('notice'); n.textContent=msg; n.style.display='block'; setTimeout(()=>n.style.display='none',2600); }
+async function api(path, opts={}) { const r=await fetch(path, {...opts, headers:{...headers(), ...(opts.headers||{})}}); if(r.status===401) location.href='/ui/login?next='+encodeURIComponent(location.pathname); return r; }
+async function apiFetch(path, opts={}) { return api(path, opts); }
+const entityByName = Object.fromEntries(CFG.entities.map(e=>[e.name,e]));
+function currentEntity() { return entityByName[window.PAGE_ENTITY] || CFG.entities[0]; }
+function roleAllowed(allowed, userRole) { const role=(userRole||'').toLowerCase(); const roles=(allowed||['any']).map(r=>String(r).toLowerCase()); if(roles.includes('any')) return true; return roles.includes(role); }
+function nav() { const currentUser=user(); const userRole=(currentUser.role||'').toLowerCase().trim(); const filteredNav=(CFG.nav||[]).filter(n=>roleAllowed(n.roles||[n.role||'any'], userRole)); const navHtml=filteredNav.map(n=>`<a class="${location.pathname===n.path?'active':''}" href="${n.path}">${n.label}</a>`).join(''); document.getElementById('nav').innerHTML=navHtml; const active=filteredNav.find(n=>location.pathname===n.path); const label=active?active.label:(userRole==='admin'?'Admin Dashboard':'Dashboard'); const sideUser=document.getElementById('sideUser'); const chip=document.getElementById('userMenu'); const crumb=document.getElementById('crumbPage'); if(sideUser) sideUser.textContent=currentUser.email||'User'; if(chip) chip.textContent=(currentUser.role||'User')+' ▾'; if(crumb) crumb.textContent=label; }
+function logout() { localStorage.removeItem('access_token'); localStorage.removeItem('current_user'); location.href='/ui/login'; }
+function titleCase(s) { return String(s||'').replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()); }
+function formatApiError(payload, fallback='Request failed') {
+  if (!payload) return fallback;
+  if (typeof payload === 'string') return payload;
+  const d = payload.detail ?? payload.message ?? payload.error;
+  if (typeof d === 'string') return d;
+  if (Array.isArray(d)) return d.map(x => {
+    if (!x) return '';
+    const loc = Array.isArray(x.loc) ? x.loc.filter(p=>p!=='body').join('.') : '';
+    const msg = x.msg || x.message || JSON.stringify(x);
+    return loc ? `${loc}: ${msg}` : msg;
+  }).filter(Boolean).join('; ') || fallback;
+  if (typeof d === 'object') return JSON.stringify(d);
+  return fallback;
+}
+function fieldInput(f, value='') { const t=(f.type||'string').toLowerCase(); const name=f.name; const req=(f.required?'required':''); if(name.endsWith('_id')) return `<input id="f_${name}" value="${value||''}" placeholder="${name} UUID" ${req}>`; if(t.includes('int')||t.includes('decimal')||t.includes('float')||t.includes('number')) return `<input id="f_${name}" type="number" value="${value??''}" ${req}>`; if(t.includes('date')) return `<input id="f_${name}" type="date" value="${String(value||'').slice(0,10)}" ${req}>`; if(t.includes('bool')) return `<select id="f_${name}" ${req}><option value="">Select...</option><option value="false">No</option><option value="true" ${value?'selected':''}>Yes</option></select>`; if(t.includes('email')) return `<input id="f_${name}" type="email" value="${value??''}" ${req}>`; return `<input id="f_${name}" type="text" value="${value??''}" ${req}>`;  }
+async function purchaseProduct(productId, title) {
+  if (!CFG.store_purchase) { flash('Purchase is not enabled for this app'); return; }
+  const qtyStr = prompt('How many would you like to buy?', '1');
+  if (qtyStr === null) return;
+  const quantity = Math.max(1, parseInt(qtyStr, 10) || 1);
+  try {
+    const r = await api(API_PREFIX + '/store/purchase', { method:'POST', body: JSON.stringify({ product_id: productId, quantity }), headers: {'Content-Type':'application/json'} });
+    let d = {};
+    try { d = await r.json(); } catch(_) {}
+    if (!r.ok) { flash(formatApiError(d, 'Purchase failed ('+r.status+')')); return; }
+    flash(d.message || ('Purchased ' + (title || 'item') + ' successfully!'));
+    const ordersPage = (CFG.entities||[]).find(x => x.kind === 'order');
+    if (ordersPage) setTimeout(() => location.href = '/ui/' + ordersPage.resource, 1000);
+  } catch(err) { flash('Purchase error: ' + err.message); }
+}
+async function catalogListPage() {
+  const e = currentEntity();
+  if (!e) { flash('Unknown catalog page'); return; }
+  try {
+    const r = await api(API_PREFIX + '/' + e.resource + '?limit=500');
+    if (!r.ok) { flash('Failed to load products (' + r.status + ')'); return; }
+    const rows = await r.json();
+    if (!Array.isArray(rows)) { flash('Invalid product data'); return; }
+    const cards = rows.map(p => {
+      const title = p.title || p.name || 'Product';
+      const price = p.price != null ? p.price : '—';
+      const stock = p.stock_quantity ?? p.stock ?? p.quantity;
+      const stockTxt = stock != null ? `In stock: ${stock}` : '';
+      const desc = (p.description || '').slice(0, 120);
+      return `<div class="card"><h2>${title}</h2><p>${desc}</p><p style="font-size:1.4rem;font-weight:800;color:var(--app-primary)">$${price}</p><p class="small" style="color:var(--app-muted)">${stockTxt}</p><button class="btn" type="button" onclick="purchaseProduct('${p.id}', '${String(title).replace(/'/g, '')}')">Buy now</button></div>`;
+    }).join('');
+    document.getElementById('app').innerHTML = `<div class="top"><div><h1>${e.label}s</h1><p>${rows.length} available — click Buy to purchase</p></div></div><div class="grid">${cards || '<div class="card"><p>No products yet.</p></div>'}</div>`;
+  } catch(err) { flash('Could not load products: ' + err.message); }
+}
+async function dashboard() { try { const userRole=(user().role||'').toLowerCase(); const visible=(CFG.entities||[]).filter(e=>roleAllowed(e.dashboard_roles||['admin'], userRole)); const r=await api(API_PREFIX + '/dashboard/stats'); if(!r.ok) { flash('Dashboard failed to load'); return; } const stats=await r.json(); const cards=visible.map(e=>{ const count=stats[e.resource]; if(count===undefined||count===null) return `<div class="card"><h2>${e.label}s</h2><p style="font-size:2rem;margin:0">—</p><a class="btn" href="/ui/${e.resource}">Open</a></div>`; return `<div class="card"><h2>${e.label}s</h2><p style="font-size:2rem;margin:0">${count}</p><a class="btn" href="/ui/${e.resource}">Open</a></div>`; }); document.getElementById('app').innerHTML=`<div class="top"><div><h1>${userRole==='admin'?'Admin Dashboard':'Dashboard'}</h1><p>${user().email||'Signed in user'}</p></div></div><div class="grid">${cards.join('')}</div>`; } catch(err) { flash('Dashboard error: '+err.message); } }
+async function listPage() { const e=currentEntity(); if(!e||!e.resource) { flash('Unknown page — regenerate app shell'); return; } const userRole=(user().role||'').toLowerCase(); const isAdmin=userRole==='admin'; const canWrite=roleAllowed(e.write_roles||['admin'], userRole); if(!isAdmin && e.kind==='catalog' && CFG.store_purchase) { return catalogListPage(); } try { const r=await api(API_PREFIX + '/' + e.resource + '?limit=500'); if(!r.ok) { flash('Failed to load records ('+r.status+')'); return; } const rows=await r.json(); if(!Array.isArray(rows)) { flash('Invalid data from server'); return; } const fieldList=Array.isArray(e.fields)?e.fields:[]; const hideCols=['password_hash','password']; if(!isAdmin) hideCols.push('user_id','customer_id','product_id'); const keys=rows.length>0?Object.keys(rows[0]).filter(k=>!hideCols.includes(k)):fieldList.map(f=>f.name); window.__rows=rows; window.__keys=keys; window.__entity=e; window.__canWrite=canWrite; const bodyRows=rows.map(row=>rowHtml(row,e,keys,canWrite)).join(''); const emptyMsg=rows.length?'' : '<tr><td colspan="99" style="text-align:center;color:var(--app-muted)">No records yet</td></tr>'; const allowNew=canWrite; const newBtn=allowNew?`<a class="btn" href="/ui/${e.resource}/new">New ${e.label}</a>`:''; const actions=canWrite?'<th>Actions</th>':''; document.getElementById('app').innerHTML=`<div class="top"><div><h1>${e.label}s</h1><p>${rows.length} records</p></div>${newBtn}</div><div class="card"><input id="search" placeholder="Search..." oninput="filterRows()"></div><div class="card"><table><thead><tr>${keys.map(k=>`<th>${titleCase(k)}</th>`).join('')}${actions}</tr></thead><tbody id="rows">${bodyRows||emptyMsg}</tbody></table></div>`; } catch(err) { flash('Records load failed: '+err.message); } }
+function rowHtml(row, ent, keys, canWrite) { const e=ent||window.__entity; const cols=keys||window.__keys||[]; const writable=(canWrite!==undefined)?canWrite:!!window.__canWrite; if(!e||!cols.length) return ''; const cells=cols.map(k=>`<td>${row[k]??''}</td>`).join(''); if(!writable) return `<tr>${cells}</tr>`; return `<tr>${cells}<td class="actions"><a class="btn secondary" href="/ui/${e.resource}/${row.id}/edit">Edit</a><button class="btn danger" onclick="delRec('${row.id}')">Delete</button></td></tr>`; }
+function filterRows() { const local=document.getElementById('search'); const global=document.getElementById('globalSearch'); const q=((local&&local.value)||(global&&global.value)||'').toLowerCase(); if(!window.__rows||!document.getElementById('rows')) return; const e=window.__entity, keys=window.__keys, canWrite=window.__canWrite; document.getElementById('rows').innerHTML=window.__rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(r=>rowHtml(r,e,keys,canWrite)).join('')||'<tr><td colspan="99" style="text-align:center;color:var(--app-muted)">No matching records</td></tr>'; }
+async function delRec(id) { if(!confirm('Delete this record?')) return; const e=currentEntity(); try { const r=await api(API_PREFIX + '/' + e.resource + '/' + id, {method:'DELETE'}); if(r.ok||r.status===204) { flash('Deleted successfully'); listPage(); } else { const msg=await r.text(); flash('Delete failed: '+msg); } } catch(err) { flash('Delete error: '+err.message); } }
+async function formPage() { const e=currentEntity(); if(!e) { flash('Unknown form'); return; } const userRole=(user().role||'').toLowerCase(); if(!roleAllowed(e.write_roles||['admin'], userRole)) { flash('You do not have permission to save this record'); setTimeout(()=>location.href='/ui/'+e.resource,900); return; } const parts=location.pathname.split('/').filter(Boolean); const isEdit=parts.at(-1)==='edit'; const id=isEdit?parts.at(-2):null; let data={}; if(isEdit) { try { const r=await api(API_PREFIX + '/' + e.resource + '/' + id); data=r.ok?await r.json():{}; } catch(err) { flash('Failed to load record: '+err.message); } } const fieldList=Array.isArray(e.fields)?e.fields:[]; document.getElementById('app').innerHTML=`<div class="top"><div><h1>${isEdit?'Edit':'Create'} ${e.label}</h1></div><a class="btn secondary" href="/ui/${e.resource}">Back</a></div><div class="card"><form id="form">${fieldList.map(f=>`<label>${titleCase(f.name)}</label>${fieldInput(f,data[f.name]??'')}`).join('')}<br><br><button class="btn" type="submit" id="submitBtn">Save</button></form></div>`; setTimeout(()=>{ const frm=document.getElementById('form'); if(frm) frm.onsubmit=async ev=>{ ev.preventDefault(); const submitBtn=document.getElementById('submitBtn'); const originalText=submitBtn.textContent; submitBtn.disabled=true; submitBtn.textContent='Saving...'; try { const body={}; fieldList.forEach(f=>{ const el=document.getElementById('f_'+f.name); if(el && el.value!==undefined && el.value!=='') { const v=el.value; body[f.name]=(el.type==='number')?Number(v):(el.type==='checkbox')?el.checked:v; } }); if(!Object.keys(body).length) { flash('Please fill in at least one field'); submitBtn.disabled=false; submitBtn.textContent=originalText; return; } const r=await api(API_PREFIX + '/' + e.resource + (isEdit?'/'+id:''), {method:isEdit?'PUT':'POST', body:JSON.stringify(body), headers:{'Content-Type':'application/json'} }); if(r.ok) { flash('Saved successfully!'); setTimeout(()=>location.href='/ui/'+e.resource, 800); } else { let errPayload={}; try { errPayload=await r.json(); } catch(_) { errPayload={detail:await r.text()}; } flash('Error: '+formatApiError(errPayload,'Save failed')); submitBtn.disabled=false; submitBtn.textContent=originalText; } } catch(error) { flash('Network error: '+error.message); submitBtn.disabled=false; submitBtn.textContent=originalText; } }; }, 50); }
+const VIS = CFG.visual || {};
+function esc(v) { const div=document.createElement('div'); div.textContent=String(v ?? ''); return div.innerHTML; }
+function cleanKeys(row,e,isAdmin) { const source=Object.keys(row||{}).length?Object.keys(row):((e.fields||[]).map(f=>f.name)); const hide=['password_hash','password']; if(!isAdmin) hide.push('user_id','customer_id','product_id','teacher_id','student_id','patient_id','tenant_id','landlord_id','owner_id'); return source.filter(k=>!hide.includes(k)); }
+function valueText(row,k) { const v=(row||{})[k]; if(v===null||v===undefined||v==='') return 'Empty'; return String(v).replace('T',' ').slice(0,96); }
+function entityPresentation(e,isAdmin) { if(isAdmin) return VIS.admin_view || 'table'; return e.presentation || VIS.user_view || 'cards'; }
+function heroHtml(userRole, visibleCount) { const admin=userRole==='admin'; const headline=admin?(VIS.admin_headline||'Admin command center'):(VIS.user_headline||'Your workspace'); const kicker=VIS.hero_kicker||'Workspace'; const roleName=userRole?titleCase(userRole):'User'; return `<section class="hero ${admin?'admin':'user'}"><div><span class="kicker">${esc(kicker)} / ${esc(roleName)}</span><h1>${esc(headline)}</h1><p>${admin?'Manage every module with a focused, domain-aware control surface.':'A role-specific experience shaped for this application, not a generic admin table.'} ${visibleCount} workspace modules are ready.</p></div><div class="hero-mark">${esc(VIS.brand_mark||'AI')}</div></section>`; }
+function dashboardCard(e, count) { const shown=(count===undefined||count===null)?'Ready':count; const label=(count===undefined||count===null)?'Open workspace':'Records tracked'; return `<div class="card"><div><div class="dash-icon"><i class="bi ${e.icon||'bi-grid-1x2'}"></i></div><h2>${esc(e.label)}s</h2><p class="small" style="color:var(--app-muted)">${label}</p></div><div><p style="font-size:2rem;margin:0;font-weight:900;color:var(--app-primary)">${shown}</p><a class="btn" href="/ui/${e.resource}">Open</a></div></div>`; }
+async function dashboard() { try { const userRole=(user().role||'').toLowerCase(); const visible=(CFG.entities||[]).filter(e=>roleAllowed(e.dashboard_roles||e.read_roles||['admin'], userRole)); const r=await api(API_PREFIX + '/dashboard/stats'); if(!r.ok) { flash('Dashboard failed to load'); return; } const stats=await r.json(); const cards=visible.map(e=>dashboardCard(e, stats[e.resource])).join(''); document.getElementById('app').innerHTML=heroHtml(userRole, visible.length)+`<div class="grid dashboard-grid">${cards||'<div class="empty-state">No dashboard modules are visible for this role yet.</div>'}</div>`; } catch(err) { flash('Dashboard error: '+err.message); } }
+function tableHtml(rows,e,keys,canWrite,isAdmin) { const actions=canWrite?'<th>Actions</th>':''; const body=rows.map(row=>rowHtml(row,e,keys,canWrite)).join(''); const badge=isAdmin?'<span class="pill">Admin console</span>':'<span class="pill">Workspace list</span>'; return `<div class="card table-shell ${isAdmin?'admin-console':''}">${badge}<table><thead><tr>${keys.map(k=>`<th>${titleCase(k)}</th>`).join('')}${actions}</tr></thead><tbody id="rows">${body}</tbody></table></div>`; }
+function recordCardHtml(row,e,keys,canWrite,presentation) { const titleKey=keys.find(k=>/title|name|email|code|status/i.test(k))||keys[0]||'id'; const subtitleKey=keys.find(k=>k!==titleKey&&/description|message|address|date|status|role|city|reason/i.test(k))||keys.find(k=>k!==titleKey); const detailKeys=keys.filter(k=>![titleKey,subtitleKey,'id'].includes(k)).slice(0,4); const fields=detailKeys.map(k=>`<div class="record-field"><span>${titleCase(k)}</span><span>${esc(valueText(row,k))}</span></div>`).join(''); const actions=canWrite?`<div class="actions"><a class="btn secondary" href="/ui/${e.resource}/${row.id}/edit">Edit</a><button class="btn danger" onclick="delRec('${row.id}')">Delete</button></div>`:''; return `<article class="record-card ${presentation}"><span class="pill"><i class="bi ${e.icon||'bi-grid-1x2'}"></i> ${esc(e.label)}</span><h3>${esc(valueText(row,titleKey))}</h3><div class="meta">${subtitleKey?esc(valueText(row,subtitleKey)):''}</div><div class="record-fields">${fields}</div>${actions}</article>`; }
+function renderRecords(rows,e,keys,canWrite,presentation,isAdmin) { if(!rows.length) return `<div class="empty-state">${esc(VIS.empty_text||'No records yet.')}</div>`; if(presentation==='table') return tableHtml(rows,e,keys,canWrite,isAdmin); return `<div id="rows" class="record-grid ${presentation}">${rows.map(row=>recordCardHtml(row,e,keys,canWrite,presentation)).join('')}</div>`; }
+async function listPage() { const e=currentEntity(); if(!e||!e.resource) { flash('Unknown page - regenerate app shell'); return; } const userRole=(user().role||'').toLowerCase(); const isAdmin=userRole==='admin'; const canWrite=roleAllowed(e.write_roles||['admin'], userRole); if(!isAdmin && e.kind==='catalog' && CFG.store_purchase) { return catalogListPage(); } try { const r=await api(API_PREFIX + '/' + e.resource + '?limit=500'); if(!r.ok) { flash('Failed to load records ('+r.status+')'); return; } const rows=await r.json(); if(!Array.isArray(rows)) { flash('Invalid data from server'); return; } const presentation=entityPresentation(e,isAdmin); const keys=rows.length>0?cleanKeys(rows[0],e,isAdmin):cleanKeys({},e,isAdmin); window.__rows=rows; window.__keys=keys; window.__entity=e; window.__canWrite=canWrite; window.__presentation=presentation; window.__isAdmin=isAdmin; const newBtn=canWrite?`<a class="btn" href="/ui/${e.resource}/new">New ${e.label}</a>`:''; const intro=isAdmin?'Management view':'Designed for your role'; document.getElementById('app').innerHTML=`<div class="top"><div><span class="pill">${esc(intro)}</span><h1>${esc(e.label)}s</h1><p>${rows.length} records shown as ${presentation}</p></div>${newBtn}</div><div class="card"><input id="search" placeholder="Search ${esc(e.label)}s..." oninput="filterRows()"></div>${renderRecords(rows,e,keys,canWrite,presentation,isAdmin)}`; } catch(err) { flash('Records load failed: '+err.message); } }
+function rowHtml(row, ent, keys, canWrite) { const e=ent||window.__entity; const cols=keys||window.__keys||[]; const writable=(canWrite!==undefined)?canWrite:!!window.__canWrite; if(!e||!cols.length) return ''; const cells=cols.map(k=>`<td>${esc(valueText(row,k))}</td>`).join(''); if(!writable) return `<tr>${cells}</tr>`; return `<tr>${cells}<td class="actions"><a class="btn secondary" href="/ui/${e.resource}/${row.id}/edit">Edit</a><button class="btn danger" onclick="delRec('${row.id}')">Delete</button></td></tr>`; }
+function filterRows() { const local=document.getElementById('search'); const global=document.getElementById('globalSearch'); const q=((local&&local.value)||(global&&global.value)||'').toLowerCase(); if(!window.__rows||!window.__entity) return; const rows=window.__rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)); const container=document.getElementById('rows'); const e=window.__entity, keys=window.__keys, canWrite=window.__canWrite, presentation=window.__presentation, isAdmin=window.__isAdmin; if(presentation==='table'&&container) { container.innerHTML=rows.map(r=>rowHtml(r,e,keys,canWrite)).join('')||'<tr><td colspan="99" style="text-align:center;color:var(--app-muted)">No matching records</td></tr>'; return; } const appGrid=document.querySelector('.record-grid'); if(appGrid) appGrid.innerHTML=rows.map(r=>recordCardHtml(r,e,keys,canWrite,presentation)).join('')||`<div class="empty-state">No matching records</div>`; }
+function guard() { if(!token()) { location.href='/ui/login?next='+encodeURIComponent(location.pathname); return; } const role=(user().role||'').toLowerCase(); if(role==='admin'&&location.pathname==='/') { location.href='/admin/dashboard'; return; } if(role!=='admin'&&location.pathname==='/admin/dashboard') { location.href='/'; return; } }
+function start() { guard(); nav(); const mode=window.PAGE_MODE||'dashboard'; if(mode==='form') formPage(); else if(mode==='list') listPage(); else dashboard(); }
+start();
+</script></body></html>

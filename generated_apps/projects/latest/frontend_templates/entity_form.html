@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Loading workspace</title>
+</head>
+<body>
+  <p>Loading application workspace...</p>
+  <script>
+    const SCHEMA_MAP = window.SCHEMA_MAP || {};
+    const access_token = localStorage.getItem('access_token') || '';
+    async function apiFetch(path, options = {}) {
+      return fetch(path, {
+        ...options,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': access_token ? 'Bearer ' + access_token : '',
+          ...(options.headers || {})
+        }
+      });
+    }
+    if (!access_token) {
+      location.href = '/ui/login?next=' + encodeURIComponent(location.pathname);
+    } else {
+      location.href = location.pathname;
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,917 @@
+from __future__ import annotations
+
+import json
+import re
+import shutil
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Callable, Dict, Optional
+
+from jinja2 import Environment, FileSystemLoader
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+def slugify(text: str) -> str:
+    text = (text or "").strip().lower()
+    text = re.sub(r"[^a-z0-9]+", "-", text)
+    return text.strip("-") or "generated-app"
+
+
+@dataclass
+class GenerateResult:
+    out_dir: str
+    project_slug: str
+
+
+def _make_env(loader_path: str) -> Environment:
+    """
+    Factory that creates a Jinja2 Environment with all custom filters.
+    Used for the FALLBACK (infrastructure files that don't change per project).
+    """
+    env = Environment(
+        loader=FileSystemLoader(str(loader_path)),
+        autoescape=False,
+        keep_trailing_newline=True,
+    )
+    env.filters["tojson"]  = lambda v, **kw: json.dumps(v, ensure_ascii=False)
+    env.filters["pascal"]  = lambda v: "".join(
+        (x[0].upper() + x[1:] if x else "") for x in re.split(r"[^a-zA-Z0-9]+", str(v))
+    )
+    env.filters["slugify"] = slugify
+    return env
+
+
+# ---------------------------------------------------------------------------
+# LLM output cleaning
+# ---------------------------------------------------------------------------
+def _clean_llm_code(raw: str, file_type: str = "python") -> str:
+    """Strip markdown fences and common LLM chatter from generated code."""
+    if not raw:
+        return ""
+
+    code = raw.strip()
+
+    # Remove triple-backtick fences (```python ... ``` or ```html ... ```)
+    code = re.sub(r"^```[\w]*\s*", "", code, flags=re.IGNORECASE)
+    code = re.sub(r"\s*```\s*$", "", code).strip()
+
+    # Remove common AI "wrapper" quotes
+    if ((code.startswith('"') and code.endswith('"')) or
+            (code.startswith("'") and code.endswith("'"))):
+        if not (code.startswith('"""') or code.startswith("'''")):
+            code = code[1:-1].replace("\\n", "\n").replace('\\"', '"').replace("\\'", "'").strip()
+
+    # Strip trailing AI chatter (lines starting with conversational words)
+    chatter_re = re.compile(
+        r"\n\s*(?:Note:|This (?:code|file|script)|I have|Here's|Let me know|Hope this).*$",
+        re.DOTALL | re.IGNORECASE,
+    )
+    code = chatter_re.sub("", code).strip()
+
+    return code
+
+
+def _validate_python(code: str) -> bool:
+    """Return True if code compiles without SyntaxError."""
+    if len(code) < 30:
+        return False
+    try:
+        compile(code, "<llm>", "exec")
+        return True
+    except SyntaxError:
+        return False
+
+
+def _validate_html(code: str) -> bool:
+    """Return True if code looks like valid HTML."""
+    if len(code) < 50:
+        return False
+    lower = code.lower()
+    return "<!doctype html" in lower or "<html" in lower or "{% extends" in lower
+
+
+# ---------------------------------------------------------------------------
+# Infrastructure files — served via Jinja2 templates (stable, correct)
+# ---------------------------------------------------------------------------
+_INFRA_TEMPLATES = {
+    "fastapi_app/app/db.py.j2":               "app/db.py",
+    "fastapi_app/app/auth.py.j2":             "app/auth.py",
+    "fastapi_app/app/deps.py.j2":             "app/deps.py",
+    "fastapi_app/routers/__init__.py.j2":     "app/routers/__init__.py",
+    "fastapi_app/routers/auth.py.j2":         "app/routers/auth.py",
+    "fastapi_app/requirements.txt.j2":        "requirements.txt",
+    "fastapi_app/.env.example.j2":            ".env.example",
+}
+
+_OPTIONAL_TEMPLATES = {
+    "fastapi_app/alembic.ini.j2":         "alembic.ini",
+    "fastapi_app/docker-compose.yml.j2":  "docker-compose.yml",
+    "fastapi_app/README.md.j2":           "README.md",
+}
+
+# Fallback templates for LLM-generated files (used if LLM fails)
+_FALLBACK_TEMPLATES = {
+    "app/models.py":                        "fastapi_app/app/models.py.j2",
+    "app/schemas.py":                       "fastapi_app/app/schemas.py.j2",
+    "app/main.py":                          "fastapi_app/app/main.py.j2",
+    "app/routers/generic_crud.py":          "fastapi_app/routers/generic_crud.py.j2",
+    "seed.py":                              "fastapi_app/seed.py.j2",
+    # HTML templates — fallback to static frontend templates
+    "frontend_templates/base.html.j2":      None,  # No Jinja-level fallback for base
+    "frontend_templates/login.html.j2":     None,
+    "frontend_templates/register.html.j2":  None,
+    "frontend_templates/dashboard.html.j2": None,
+    "frontend_templates/entity_list.html.j2": None,
+    "frontend_templates/entity_form.html.j2": None,
+}
+
+
+# ---------------------------------------------------------------------------
+# LLM generation plan — each entry defines one file
+# ---------------------------------------------------------------------------
+def _build_llm_plan(project_data: dict, theme: dict) -> list:
+    """
+    Returns a list of dicts, each describing one LLM-generated file.
+    We keep the context payload small so llama3.1 8k window isn't exceeded.
+    """
+    from generated_apps.generator.codegen_prompts import (
+        CODEGEN_MODELS_SYSTEM,
+        CODEGEN_SCHEMAS_SYSTEM,
+        CODEGEN_MAIN_SYSTEM,
+        CODEGEN_CRUD_SYSTEM,
+        CODEGEN_SEED_SYSTEM,
+        CODEGEN_BASE_HTML_SYSTEM,
+        CODEGEN_LOGIN_HTML_SYSTEM,
+        CODEGEN_REGISTER_HTML_SYSTEM,
+        CODEGEN_DASHBOARD_HTML_SYSTEM,
+        CODEGEN_LIST_HTML_SYSTEM,
+        CODEGEN_FORM_HTML_SYSTEM,
+    )
+
+    arch = project_data.get("architecture", {}) or {}
+    dm   = project_data.get("data_model",   {}) or {}
+    title = (project_data.get("cleaned_spec", {}) or {}).get("project_title") or "Generated App"
+
+    # Trim architecture to save tokens (only what each file needs)
+    arch_slim = {
+        "pages":   arch.get("pages",   []),
+        "roles":   arch.get("roles",   []),
+        "layout":  arch.get("layout",  "topnav"),
+        "endpoints": arch.get("endpoints", []),
+    }
+
+    return [
+        # ── Python backend ────────────────────────────────────────────────
+        {
+            "output":   "app/models.py",
+            "system":   CODEGEN_MODELS_SYSTEM,
+            "context":  {"project_title": title, "data_model": dm},
+            "type":     "python",
+            "validate": _validate_python,
+            "label":    "models.py (SQLAlchemy models)",
+        },
+        {
+            "output":   "app/schemas.py",
+            "system":   CODEGEN_SCHEMAS_SYSTEM,
+            "context":  {"project_title": title, "data_model": dm, "architecture": arch_slim},
+            "type":     "python",
+            "validate": _validate_python,
+            "label":    "schemas.py (Pydantic schemas)",
+        },
+        {
+            "output":   "app/main.py",
+            "system":   CODEGEN_MAIN_SYSTEM,
+            "context":  {"project_title": title, "architecture": arch_slim, "data_model": dm},
+            "type":     "python",
+            "validate": _validate_python,
+            "label":    "main.py (FastAPI routes)",
+        },
+        {
+            "output":   "app/routers/generic_crud.py",
+            "system":   CODEGEN_CRUD_SYSTEM,
+            "context":  {"project_title": title, "data_model": dm, "architecture": arch_slim},
+            "type":     "python",
+            "validate": _validate_python,
+            "label":    "generic_crud.py (CRUD router)",
+        },
+        {
+            "output":   "seed.py",
+            "system":   CODEGEN_SEED_SYSTEM,
+            "context":  {"project_title": title, "data_model": dm},
+            "type":     "python",
+            "validate": _validate_python,
+            "label":    "seed.py (sample data)",
+        },
+        # ── HTML frontend ─────────────────────────────────────────────────
+        {
+            "output":   "frontend_templates/base.html.j2",
+            "system":   CODEGEN_BASE_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme, "architecture": arch_slim},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "base.html.j2 (navigation + layout)",
+        },
+        {
+            "output":   "frontend_templates/login.html.j2",
+            "system":   CODEGEN_LOGIN_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "login.html.j2 (login page)",
+        },
+        {
+            "output":   "frontend_templates/register.html.j2",
+            "system":   CODEGEN_REGISTER_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "register.html.j2 (register page)",
+        },
+        {
+            "output":   "frontend_templates/dashboard.html.j2",
+            "system":   CODEGEN_DASHBOARD_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme, "architecture": arch_slim, "data_model": dm},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "dashboard.html.j2 (main dashboard)",
+        },
+        {
+            "output":   "frontend_templates/entity_list.html.j2",
+            "system":   CODEGEN_LIST_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme, "architecture": arch_slim, "data_model": dm},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "entity_list.html.j2 (data table)",
+        },
+        {
+            "output":   "frontend_templates/entity_form.html.j2",
+            "system":   CODEGEN_FORM_HTML_SYSTEM,
+            "context":  {"project_title": title, "theme": theme, "architecture": arch_slim, "data_model": dm},
+            "type":     "html",
+            "validate": _validate_html,
+            "label":    "entity_form.html.j2 (create/edit form)",
+        },
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Post-process HTML: run Jinja2 rendering for HTML templates that use
+# {% extends %} / {% block %} so the final file is flat HTML (no Jinja2).
+# ---------------------------------------------------------------------------
+def _render_html_with_jinja(
+    html_source: str,
+    file_name: str,
+    context: dict,
+    frontend_out_dir: Path,
+) -> Optional[str]:
+    """
+    If the LLM wrote a child template ({% extends ... %}), we need to
+    render it with Jinja2 so the output is flat HTML.
+    Returns rendered string, or None if rendering fails.
+    """
+    if "{% extends" not in html_source:
+        return html_source  # Already flat — no processing needed
+
+    try:
+        from jinja2 import DictLoader, Environment as JEnv
+        # Build a mini env with the base template in memory
+        base_path = frontend_out_dir / "base.html.j2"
+        sources: dict[str, str] = {}
+        if base_path.exists():
+            sources["base.html.j2"] = base_path.read_text(encoding="utf-8")
+        sources[file_name] = html_source
+
+        env = JEnv(loader=DictLoader(sources), autoescape=False)
+        env.filters["tojson"]  = lambda v, **kw: json.dumps(v, ensure_ascii=False)
+        env.filters["pascal"]  = lambda v: "".join(
+            (x[0].upper() + x[1:] if x else "") for x in re.split(r"[^a-zA-Z0-9]+", str(v))
+        )
+        env.filters["slugify"] = slugify
+
+        tpl = env.get_template(file_name)
+        return tpl.render(**context)
+    except Exception as exc:
+        print(f"[warn] Jinja2 render of {file_name} failed: {exc}")
+        return None
+
+
+# ---------------------------------------------------------------------------
+# Deterministic app shell and validation guardrails
+# ---------------------------------------------------------------------------
+def _entity_class_name(name: str) -> str:
+    return "".join(part[:1].upper() + part[1:] for part in re.findall(r"[A-Za-z0-9]+", str(name)))
+
+
+def _resource_name(entity_name: str) -> str:
+    # Match the existing CRUD prompt: Book -> books, BorrowedBook -> borrowedbooks.
+    return re.sub(r"[^a-zA-Z0-9]+", "_", str(entity_name)).strip("_").lower() + "s"
+
+
+def _infer_page_target(page: dict, entities: list[dict]) -> tuple[str, str]:
+    text = f"{page.get('name', '')} {page.get('path', '')} {page.get('description', '')}".lower()
+    explicit = page.get("target_entity")
+    if explicit:
+        return _entity_class_name(explicit), "form" if any(w in text for w in ["add", "new", "create", "borrow"]) else "list"
+
+    if any(w in text for w in ["borrow", "loan", "history", "active loans", "top borrowers"]):
+        for entity in entities:
+            lowered = str(entity.get("name", "")).lower()
+            if any(w in lowered for w in ["borrow", "loan"]):
+                mode = "form" if any(w in text for w in ["borrow-book", "borrow book", "new", "add", "create"]) else "list"
+                return _entity_class_name(entity.get("name")), mode
+
+    if "stock" in text:
+        for entity in entities:
+            if "stock" in str(entity.get("name", "")).lower():
+                return _entity_class_name(entity.get("name")), "list"
+
+    best_entity = ""
+    for entity in entities:
+        name = str(entity.get("name", ""))
+        words = re.findall(r"[A-Z]?[a-z]+|[A-Z]+(?=[A-Z]|$)|\d+", name)
+        hay = " ".join(w.lower() for w in words) + " " + _resource_name(name)
+        if any(word and word in text for word in hay.split()):
+            best_entity = _entity_class_name(name)
+            break
+
+    if not best_entity and "borrow" in text:
+        for entity in entities:
+            if "borrow" in str(entity.get("name", "")).lower() or "loan" in str(entity.get("name", "")).lower():
+                best_entity = _entity_class_name(entity.get("name"))
+                break
+
+    if not best_entity and entities:
+        best_entity = _entity_class_name(entities[0].get("name"))
+
+    mode = "dashboard"
+    if any(w in text for w in ["add", "new", "create", "borrow"]):
+        mode = "form"
+    elif any(w in text for w in ["manage", "browse", "history", "active", "top", "list"]):
+        mode = "list"
+    elif any(w in text for w in ["stat", "dashboard", "analytics"]):
+        mode = "dashboard"
+    return best_entity, mode
+
+
+def _write_main_routes(out_dir: Path, project_data: dict) -> None:
+    arch = project_data.get("architecture", {}) or {}
+    dm = project_data.get("data_model", {}) or {}
+    title = (project_data.get("cleaned_spec", {}) or {}).get("project_title") or "Generated App"
+    entities = [e for e in (dm.get("entities") or []) if str(e.get("name", "")).lower() != "user"]
+
+    route_lines: list[str] = []
+    for entity in entities:
+        cls = _entity_class_name(entity.get("name", "Record"))
+        res = _resource_name(entity.get("name", "record"))
+        fn = re.sub(r"[^a-z0-9_]", "_", res.lower())
+        route_lines.extend([
+            f'@app.get("/ui/{res}", response_class=Response, include_in_schema=False)',
+            f'def ui_list_{fn}(): return _app_html(entity="{cls}", mode="list")',
+            "",
+            f'@app.get("/ui/{res}/new", response_class=Response, include_in_schema=False)',
+            f'def ui_new_{fn}(): return _app_html(entity="{cls}", mode="form")',
+            "",
+            f'@app.get("/ui/{res}/{{item_id}}/edit", response_class=Response, include_in_schema=False)',
+            f'def ui_edit_{fn}(item_id: str): return _app_html(entity="{cls}", mode="form")',
+            "",
+        ])
+
+    seen_paths = {"/", "/admin/dashboard", "/ui/login", "/ui/register"}
+    for entity in entities:
+        res = _resource_name(entity.get("name", "record"))
+        seen_paths.update({f"/ui/{res}", f"/ui/{res}/new"})
+    for idx, page in enumerate(arch.get("pages") or [], start=1):
+        path = page.get("path")
+        if not path or path in seen_paths or str(path).startswith("/ui/"):
+            continue
+        target, mode = _infer_page_target(page, entities)
+        safe_name = re.sub(r"[^a-zA-Z0-9_]", "_", str(path).strip("/").replace("/", "_")) or f"page_{idx}"
+        route_lines.extend([
+            f'@app.get("{path}", response_class=Response, include_in_schema=False)',
+            f'def ui_page_{idx}_{safe_name}(request: Request): return _app_html(entity="{target}", mode="{mode}", page_path="{path}")',
+            "",
+        ])
+        seen_paths.add(path)
+
+    main_code = f'''from contextlib import asynccontextmanager
+from pathlib import Path
+from fastapi import FastAPI, Request, Response
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+
+from app.db import engine, Base
+from app.routers.auth import router as auth_router
+from app.routers.generic_crud import router as crud_router
+
+_FRONTEND_DIR = Path(__file__).resolve().parent.parent / "frontend_templates"
+
+
+def _serve_html(filename: str, inject: str = "") -> Response:
+    path = _FRONTEND_DIR / filename
+    if not path.exists():
+        return JSONResponse({{"error": f"{{filename}} not found"}}, status_code=404)
+    content = path.read_text(encoding="utf-8")
+    if inject:
+        content = content.replace("</head>", inject + "\\n</head>") if "</head>" in content else inject + content
+    return Response(
+        content=content,
+        media_type="text/html",
+        headers={{"Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0"}},
+    )
+
+
+def _app_html(entity: str = "", mode: str = "dashboard", page_path: str = "") -> Response:
+    inject = (
+        "<script>"
+        f"window.PAGE_ENTITY={{entity!r}};"
+        f"window.PAGE_MODE={{mode!r}};"
+        f"window.PAGE_PATH={{page_path!r}};"
+        "</script>"
+    )
+    return _serve_html("app.html", inject)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(title={title!r}, description="Auto-generated by AI Website Builder", version="1.0.0", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.include_router(auth_router)
+app.include_router(crud_router)
+
+
+@app.get("/health", tags=["health"])
+def health():
+    return {{"status": "ok", "project": {title!r}}}
+
+
+@app.get("/api", tags=["health"])
+def api_root():
+    return {{"project": {title!r}, "ui": "/", "docs": "/docs", "health": "/health"}}
+
+
+@app.get("/ui/login", response_class=Response, include_in_schema=False)
+def ui_login(): return _serve_html("login.html")
+
+
+@app.get("/ui/register", response_class=Response, include_in_schema=False)
+def ui_register(): return _serve_html("register.html")
+
+
+@app.get("/", response_class=Response, include_in_schema=False)
+def ui_root(): return _app_html(mode="dashboard", page_path="/")
+
+
+@app.get("/admin/dashboard", response_class=Response, include_in_schema=False)
+def ui_admin(): return _app_html(mode="dashboard", page_path="/admin/dashboard")
+
+
+{chr(10).join(route_lines)}
+'''
+    (out_dir / "app" / "main.py").write_text(main_code, encoding="utf-8")
+
+
+def _write_frontend_shell(out_dir: Path, project_data: dict, theme: dict) -> None:
+    arch = project_data.get("architecture", {}) or {}
+    dm = project_data.get("data_model", {}) or {}
+    title = (project_data.get("cleaned_spec", {}) or {}).get("project_title") or "Generated App"
+    entities = []
+    for entity in dm.get("entities") or []:
+        if str(entity.get("name", "")).lower() == "user":
+            continue
+        cls = _entity_class_name(entity.get("name", "Record"))
+        entities.append({
+            "name": cls,
+            "resource": _resource_name(entity.get("name", "record")),
+            "label": re.sub(r"(?<!^)(?=[A-Z])", " ", cls),
+            "fields": [f for f in entity.get("fields", []) if f.get("name") not in {"id", "created_at", "updated_at"}],
+        })
+
+    nav = [{"label": "Dashboard", "path": "/", "entity": "", "mode": "dashboard"}]
+    for page in arch.get("pages") or []:
+        path = page.get("path")
+        if not path:
+            continue
+        target, mode = _infer_page_target(page, [e for e in dm.get("entities", []) if str(e.get("name", "")).lower() != "user"])
+        nav.append({"label": page.get("name") or path.strip("/") or "Page", "path": path, "entity": target, "mode": mode})
+    for entity in entities:
+        nav.append({"label": f"Manage {entity['label']}s", "path": f"/ui/{entity['resource']}", "entity": entity["name"], "mode": "list"})
+
+    payload = {
+        "title": title,
+        "theme": theme,
+        "entities": entities,
+        "nav": nav,
+    }
+    app_html = f'''<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<style>
+:root {{ --primary:{theme.get("primary", "#2563eb")}; --accent:{theme.get("accent", "#14b8a6")}; --bg:{theme.get("bg", "#f7faf9")}; --surface:{theme.get("surface", "#ffffff")}; --text:{theme.get("text", "#17202a")}; --muted:{theme.get("text_muted", "#64748b")}; }}
+* {{ box-sizing:border-box; }} body {{ margin:0; font-family:Inter,Segoe UI,Arial,sans-serif; background:var(--bg); color:var(--text); }}
+.shell {{ display:grid; grid-template-columns:260px 1fr; min-height:100vh; }} .side {{ background:#164e3b; color:white; padding:18px 12px; }}
+.brand {{ font-weight:800; padding:12px 14px 20px; line-height:1.2; }} .nav a {{ display:block; color:white; text-decoration:none; padding:12px 14px; border-radius:8px; margin:4px 0; }}
+.nav a:hover,.nav a.active {{ background:rgba(255,255,255,.14); }} main {{ padding:24px; }} .top {{ display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:20px; }}
+.card {{ background:var(--surface); border:1px solid rgba(0,0,0,.08); border-radius:8px; box-shadow:0 8px 24px rgba(15,23,42,.08); padding:18px; margin-bottom:16px; }}
+.grid {{ display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:16px; }} .btn {{ border:0; border-radius:7px; padding:10px 14px; background:var(--primary); color:white; cursor:pointer; text-decoration:none; display:inline-flex; align-items:center; gap:6px; }}
+.btn.secondary {{ background:#475569; }} .btn.danger {{ background:#dc2626; }} input,select {{ width:100%; padding:10px; border:1px solid #cbd5e1; border-radius:7px; background:white; }}
+label {{ display:block; font-size:.85rem; color:var(--muted); margin:12px 0 6px; }} table {{ width:100%; border-collapse:collapse; }} th,td {{ padding:10px; border-bottom:1px solid #e2e8f0; text-align:left; vertical-align:top; }} th {{ color:var(--muted); font-size:.8rem; text-transform:uppercase; }}
+.actions {{ display:flex; gap:8px; flex-wrap:wrap; }} .notice {{ position:fixed; right:18px; bottom:18px; background:#111827; color:white; padding:12px 14px; border-radius:8px; display:none; }}
+@media (max-width:800px) {{ .shell {{ grid-template-columns:1fr; }} .side {{ position:static; }} }}
+</style>
+<script>window.APP_CONFIG = {json.dumps(payload, ensure_ascii=False)};</script>
+</head>
+<body><div class="shell"><aside class="side"><div class="brand">{title}</div><nav class="nav" id="nav"></nav></aside><main><div id="app"></div></main></div><div id="notice" class="notice"></div>
+<script>
+const CFG = window.APP_CONFIG;
+const token = () => localStorage.getItem('access_token') || '';
+const user = () => JSON.parse(localStorage.getItem('current_user') || '{{}}');
+const headers = () => token() ? {{'Content-Type':'application/json','Authorization':'Bearer '+token()}} : {{'Content-Type':'application/json'}};
+function flash(msg) {{ const n=document.getElementById('notice'); n.textContent=msg; n.style.display='block'; setTimeout(()=>n.style.display='none',2600); }}
+async function api(path, opts={{}}) {{ const r=await fetch(path, {{...opts, headers:{{...headers(), ...(opts.headers||{{}})}}}}); if(r.status===401) location.href='/ui/login?next='+encodeURIComponent(location.pathname); return r; }}
+const entityByName = Object.fromEntries(CFG.entities.map(e=>[e.name,e]));
+function currentEntity() {{ return entityByName[window.PAGE_ENTITY] || CFG.entities[0]; }}
+function nav() {{ document.getElementById('nav').innerHTML = CFG.nav.map(n=>`<a class="${{location.pathname===n.path?'active':''}}" href="${{n.path}}">${{n.label}}</a>`).join('') + '<a href="#" onclick="logout()">Logout</a>'; }}
+function logout() {{ localStorage.removeItem('access_token'); localStorage.removeItem('current_user'); location.href='/ui/login'; }}
+function titleCase(s) {{ return String(s||'').replace(/_/g,' ').replace(/\\b\\w/g,c=>c.toUpperCase()); }}
+function fieldInput(f, value='') {{ const t=(f.type||'string').toLowerCase(); const name=f.name; if(name.endsWith('_id')) return `<input id="f_${{name}}" value="${{value||''}}" placeholder="${{name}} UUID">`; if(t.includes('int')||t.includes('decimal')||t.includes('float')) return `<input id="f_${{name}}" type="number" value="${{value??''}}">`; if(t.includes('date')) return `<input id="f_${{name}}" type="date" value="${{String(value||'').slice(0,10)}}">`; if(t.includes('bool')) return `<select id="f_${{name}}"><option value="false">No</option><option value="true" ${{value?'selected':''}}>Yes</option></select>`; return `<input id="f_${{name}}" value="${{value??''}}">`; }}
+async function dashboard() {{ const cards = await Promise.all(CFG.entities.map(async e=>{{ const r=await api('/api/'+e.resource); const rows=r.ok?await r.json():[]; return `<div class="card"><h2>${{e.label}}s</h2><p style="font-size:2rem;margin:0">${{rows.length}}</p><a class="btn" href="/ui/${{e.resource}}">Open</a></div>`; }})); document.getElementById('app').innerHTML=`<div class="top"><div><h1>Dashboard</h1><p>${{user().email||'Signed in user'}}</p></div></div><div class="grid">${{cards.join('')}}</div>`; }}
+async function listPage() {{ const e=currentEntity(); const r=await api('/api/'+e.resource+'?limit=500'); const rows=r.ok?await r.json():[]; const keys=rows[0]?Object.keys(rows[0]).filter(k=>k!=='password_hash'):e.fields.map(f=>f.name); document.getElementById('app').innerHTML=`<div class="top"><div><h1>${{e.label}}s</h1><p>${{rows.length}} records</p></div><a class="btn" href="/ui/${{e.resource}}/new">New ${{e.label}}</a></div><div class="card"><input id="search" placeholder="Search..." oninput="filterRows()"></div><div class="card"><table><thead><tr>${{keys.map(k=>`<th>${{titleCase(k)}}</th>`).join('')}}<th>Actions</th></tr></thead><tbody id="rows">${{rows.map(rowHtml).join('')}}</tbody></table></div>`; window.__rows=rows; window.__keys=keys; window.__entity=e; }}
+function rowHtml(row) {{ const e=window.__entity, keys=window.__keys; return `<tr>${{keys.map(k=>`<td>${{row[k]??''}}</td>`).join('')}}<td class="actions"><a class="btn secondary" href="/ui/${{e.resource}}/${{row.id}}/edit">Edit</a><button class="btn danger" onclick="delRec('${{row.id}}')">Delete</button></td></tr>`; }}
+function filterRows() {{ const q=document.getElementById('search').value.toLowerCase(); document.getElementById('rows').innerHTML=window.__rows.filter(r=>JSON.stringify(r).toLowerCase().includes(q)).map(rowHtml).join(''); }}
+async function delRec(id) {{ if(!confirm('Delete this record?')) return; const e=currentEntity(); const r=await api('/api/'+e.resource+'/'+id, {{method:'DELETE'}}); if(r.ok||r.status===204) {{ flash('Deleted'); listPage(); }} else flash('Delete failed'); }}
+async function formPage() {{ const e=currentEntity(); const parts=location.pathname.split('/').filter(Boolean); const isEdit=parts.at(-1)==='edit'; const id=isEdit?parts.at(-2):null; let data={{}}; if(isEdit) {{ const r=await api('/api/'+e.resource+'/'+id); data=r.ok?await r.json():{{}}; }} document.getElementById('app').innerHTML=`<div class="top"><div><h1>${{isEdit?'Edit':'Create'}} ${{e.label}}</h1></div><a class="btn secondary" href="/ui/${{e.resource}}">Back</a></div><div class="card"><form id="form">${{e.fields.map(f=>`<label>${{titleCase(f.name)}}</label>${{fieldInput(f,data[f.name])}}`).join('')}}<br><br><button class="btn" type="submit">Save</button></form></div>`; document.getElementById('form').onsubmit=async ev=>{{ ev.preventDefault(); const body={{}}; e.fields.forEach(f=>{{ const el=document.getElementById('f_'+f.name); if(!el||el.value==='') return; body[f.name]=el.value; }}); const r=await api('/api/'+e.resource+(isEdit?'/'+id:''), {{method:isEdit?'PUT':'POST', body:JSON.stringify(body)}}); if(r.ok) location.href='/ui/'+e.resource; else flash(await r.text()); }}; }}
+function guard() {{ if(!token()) location.href='/ui/login?next='+encodeURIComponent(location.pathname); }}
+function start() {{ guard(); nav(); const mode=window.PAGE_MODE||'dashboard'; if(mode==='form') formPage(); else if(mode==='list') listPage(); else dashboard(); }}
+start();
+</script></body></html>'''
+
+    login_html = f'''<!doctype html><html><head><meta charset="utf-8"><title>Login - {title}</title><style>body{{font-family:Segoe UI,Arial;background:{theme.get("bg", "#f7faf9")};display:grid;place-items:center;min-height:100vh}}.card{{background:white;padding:28px;border-radius:8px;box-shadow:0 10px 30px #0002;width:min(420px,92vw)}}input,button{{width:100%;padding:12px;margin:8px 0;border-radius:7px;border:1px solid #cbd5e1}}button{{background:{theme.get("primary", "#2563eb")};color:white;border:0}}</style></head><body><form class="card" id="login"><h1>{title}</h1><p>Sign in to continue.</p><input id="email" type="email" value="admin@example.com" required><input id="password" type="password" value="Admin1234!" required><button>Login</button><a href="/ui/register">Create account</a></form><script>document.getElementById('login').onsubmit=async e=>{{e.preventDefault();const r=await fetch('/api/auth/login',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{email:email.value,password:password.value}})}});const d=await r.json();if(!r.ok){{alert(d.detail||'Login failed');return}}localStorage.setItem('access_token',d.access_token);const me=await fetch('/api/auth/me',{{headers:{{Authorization:'Bearer '+d.access_token}}}});localStorage.setItem('current_user',JSON.stringify(me.ok?await me.json():{{email:email.value,role:'User'}}));location.href=new URLSearchParams(location.search).get('next')||'/';}}</script></body></html>'''
+    register_html = f'''<!doctype html><html><head><meta charset="utf-8"><title>Register - {title}</title><style>body{{font-family:Segoe UI,Arial;background:{theme.get("bg", "#f7faf9")};display:grid;place-items:center;min-height:100vh}}.card{{background:white;padding:28px;border-radius:8px;box-shadow:0 10px 30px #0002;width:min(420px,92vw)}}input,button{{width:100%;padding:12px;margin:8px 0;border-radius:7px;border:1px solid #cbd5e1}}button{{background:{theme.get("primary", "#2563eb")};color:white;border:0}}</style></head><body><form class="card" id="reg"><h1>Create Account</h1><input id="name" placeholder="Full name"><input id="email" type="email" required><input id="password" type="password" required><button>Register</button><a href="/ui/login">Back to login</a></form><script>document.getElementById('reg').onsubmit=async e=>{{e.preventDefault();const r=await fetch('/api/auth/register',{{method:'POST',headers:{{'Content-Type':'application/json'}},body:JSON.stringify({{full_name:name.value,email:email.value,password:password.value,role:'Customer'}})}});if(r.ok) location.href='/ui/login'; else alert(await r.text());}}</script></body></html>'''
+
+    frontend_dir = out_dir / "frontend_templates"
+    frontend_dir.mkdir(parents=True, exist_ok=True)
+    for old in frontend_dir.glob("*.j2"):
+        old.unlink(missing_ok=True)
+    (frontend_dir / "app.html").write_text(app_html, encoding="utf-8")
+    (frontend_dir / "login.html").write_text(login_html, encoding="utf-8")
+    (frontend_dir / "register.html").write_text(register_html, encoding="utf-8")
+
+
+def _write_smoke_tests(out_dir: Path) -> None:
+    tests_dir = out_dir / "tests"
+    tests_dir.mkdir(parents=True, exist_ok=True)
+    test_code = '''import os
+from fastapi.testclient import TestClient
+
+os.environ.setdefault("DATABASE_URL", "sqlite:///./test_smoke.db")
+
+from app.main import app
+import seed
+
+seed.main()
+
+
+client = TestClient(app)
+
+
+def login():
+    res = client.post("/api/auth/login", json={"email": "admin@example.com", "password": "Admin1234!"})
+    assert res.status_code == 200, res.text
+    return {"Authorization": "Bearer " + res.json()["access_token"]}
+
+
+def test_health_and_auth_flow():
+    assert client.get("/health").status_code == 200
+    headers = login()
+    assert client.get("/api/auth/me", headers=headers).status_code == 200
+
+
+def test_backend_has_seeded_readable_resources():
+    headers = login()
+    spec = client.get("/openapi.json").json()
+    list_paths = sorted(p for p, ops in spec["paths"].items() if p.startswith("/api/") and "{" not in p and p not in {"/api/auth/login", "/api/auth/register", "/api/auth/me", "/api"})
+    assert list_paths, "No resource API routes generated"
+    non_empty = 0
+    for path in list_paths:
+        res = client.get(path, headers=headers)
+        assert res.status_code == 200, f"{path}: {res.text}"
+        assert isinstance(res.json(), list)
+        non_empty += int(len(res.json()) > 0)
+    assert non_empty > 0, "Seed data did not populate any resource"
+
+
+def test_ui_routes_are_app_backed_and_not_jinja():
+    for path in ["/", "/ui/login", "/ui/register"]:
+        res = client.get(path)
+        assert res.status_code == 200
+        assert "{%" not in res.text and ".html.j2" not in res.text
+    app_page = client.get("/")
+    assert "window.APP_CONFIG" in app_page.text
+'''
+    (tests_dir / "test_smoke.py").write_text(test_code, encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Main generation function
+# ---------------------------------------------------------------------------
+def _generate_repo_internal(
+    project_data: Dict[str, Any],
+    generated_root: str,
+    project_id: str,
+    ask_llm_fn: Optional[Callable] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> GenerateResult:
+    """
+    Creates a runnable FastAPI + SQLite + Alembic repo.
+
+    When ask_llm_fn is provided (Stage-9 LLM mode):
+      • Infrastructure files (db, auth, deps, routers/auth, requirements, .env)
+        are rendered from stable Jinja2 templates.
+      • Business-logic files (models, schemas, main, crud, seed) are written
+        by the LLM from scratch — unique per project.
+      • ALL frontend HTML templates are written by the LLM from scratch —
+        unique visual design per project.
+      • Each LLM file is syntax-validated; invalid output falls back to
+        the Jinja2 template so the build never hard-fails.
+
+    When ask_llm_fn is None (legacy Jinja2 mode):
+      • All files rendered from templates (original behaviour).
+    """
+
+    def _log(msg: str):
+        print(msg)
+        if progress_callback:
+            progress_callback(msg)
+
+    cleaned      = project_data.get("cleaned_spec", {}) or {}
+    title        = cleaned.get("project_title") or "Generated App"
+    project_slug = slugify(title)
+
+    out_dir = Path(generated_root) / project_id / "v1"
+
+    # Clean old build artifacts
+    if out_dir.exists():
+        import time
+        for _ in range(5):
+            try:
+                shutil.rmtree(out_dir)
+                break
+            except Exception:
+                time.sleep(0.5)
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Locate templates dir ──────────────────────────────────────────────
+    repo_root     = Path(__file__).resolve().parents[2]
+    templates_dir = repo_root / "templates"
+    if not templates_dir.exists():
+        raise FileNotFoundError(f"templates folder not found at: {templates_dir}")
+
+    env = _make_env(str(templates_dir))
+
+    # ── Build Jinja2 context (used for infrastructure files + fallbacks) ───
+    architecture = project_data.get("architecture", {}) or {}
+    raw_theme    = architecture.get("theme", {}) or {}
+    DEFAULT_THEME = {
+        "primary":      "#4f46e5",
+        "accent":       "#f59e0b",
+        "bg":           "#0f0e17",
+        "surface":      "#1a1a2e",
+        "text":         "#fffffe",
+        "text_muted":   "#a7a9be",
+        "font_heading": "Outfit",
+        "font_body":    "Inter",
+        "vibe":         f"A clean, modern web application — {title}",
+    }
+    theme = {**DEFAULT_THEME, **raw_theme}
+
+    # Override with UI_SELECTION theme if user explicitly chose one
+    ui_sel = project_data.get("ui_selection", {}) or {}
+    if ui_sel.get("theme_vars"):
+        theme = {**theme, **ui_sel["theme_vars"]}
+
+    jinja_ctx = {
+        "project_title": title,
+        "cleaned_spec":  project_data.get("cleaned_spec",  {}) or {},
+        "requirements":  project_data.get("requirements",  {}) or {},
+        "user_stories":  project_data.get("user_stories",  {}) or {},
+        "architecture":  project_data.get("architecture",  {}) or {},
+        "data_model":    project_data.get("data_model",    {}) or {},
+        "project_slug":  project_slug,
+        "project_id":    project_id,
+        "theme":         theme,
+    }
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 1 — Render stable infrastructure files via Jinja2 (always)
+    # ═══════════════════════════════════════════════════════════════════════
+    _log("[infra] Rendering infrastructure files via Jinja2 templates...")
+    for tpl_key, out_rel in _INFRA_TEMPLATES.items():
+        try:
+            tpl = env.get_template(tpl_key)
+            rendered = tpl.render(**jinja_ctx)
+            out_path = out_dir / out_rel
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(rendered, encoding="utf-8")
+        except Exception as exc:
+            _log(f"[warn] infra template {tpl_key}: {exc}")
+
+    for tpl_key, out_rel in _OPTIONAL_TEMPLATES.items():
+        try:
+            tpl = env.get_template(tpl_key)
+            rendered = tpl.render(**jinja_ctx)
+            out_path = out_dir / out_rel
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(rendered, encoding="utf-8")
+        except Exception:
+            pass
+
+    # ── app/__init__.py (always empty, needed for Python package) ─────────
+    app_init = out_dir / "app" / "__init__.py"
+    app_init.parent.mkdir(parents=True, exist_ok=True)
+    if not app_init.exists():
+        app_init.write_text('"""Generated app package"""\n', encoding="utf-8")
+
+    # ── routers/__init__.py ───────────────────────────────────────────────
+    (out_dir / "app" / "routers").mkdir(parents=True, exist_ok=True)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    # STEP 2 — Generate business logic + HTML via LLM  (if ask_llm_fn given)
+    #          otherwise fall back to Jinja2 templates
+    # ═══════════════════════════════════════════════════════════════════════
+    if ask_llm_fn:
+        _log("[llm] Starting LLM-based from-scratch code generation...")
+        frontend_out_dir = out_dir / "frontend_templates"
+        frontend_out_dir.mkdir(parents=True, exist_ok=True)
+
+        plan = _build_llm_plan(project_data, theme)
+
+        for spec in plan:
+            label     = spec["label"]
+            out_rel   = spec["output"]
+            system    = spec["system"]
+            context   = spec["context"]
+            validator = spec["validate"]
+            ftype     = spec["type"]
+
+            _log(f"[llm] Generating {label} ...")
+
+            raw = ""
+            try:
+                user_msg = json.dumps(context, ensure_ascii=False)
+                raw = ask_llm_fn(
+                    system=system,
+                    user=user_msg,
+                    num_predict=3000,
+                )
+            except Exception as llm_err:
+                _log(f"[warn] LLM call failed for {out_rel}: {llm_err}")
+
+            code = _clean_llm_code(raw, ftype)
+
+            # For HTML child templates that use {% extends %}, render them
+            if ftype == "html" and code and "{% extends" in code:
+                file_name = Path(out_rel).name
+                rendered = _render_html_with_jinja(code, file_name, jinja_ctx, frontend_out_dir)
+                if rendered:
+                    code = rendered
+
+            valid = validator(code) if code else False
+
+            if valid:
+                out_path = out_dir / out_rel
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(code, encoding="utf-8")
+                _log(f"[llm] ✅ {out_rel} written ({len(code)} chars)")
+            else:
+                _log(f"[warn] ⚠ LLM output invalid for {out_rel} — falling back to Jinja2 template")
+                fallback_tpl_key = _FALLBACK_TEMPLATES.get(out_rel)
+                if fallback_tpl_key:
+                    try:
+                        tpl = env.get_template(fallback_tpl_key)
+                        rendered = tpl.render(**jinja_ctx)
+                        out_path = out_dir / out_rel
+                        out_path.parent.mkdir(parents=True, exist_ok=True)
+                        out_path.write_text(rendered, encoding="utf-8")
+                        _log(f"[fallback] ✅ Jinja2 fallback used for {out_rel}")
+                    except Exception as fb_err:
+                        _log(f"[error] Fallback also failed for {out_rel}: {fb_err}")
+                else:
+                    _log(f"[warn] No Jinja2 fallback configured for {out_rel} — skipping")
+
+    else:
+        # ─── Legacy Jinja2 mode (original behaviour) ──────────────────────
+        _log("[jinja2] Rendering all files from templates (legacy mode)...")
+
+        for tpl_key, out_rel in {
+            "fastapi_app/app/models.py.j2":             "app/models.py",
+            "fastapi_app/app/schemas.py.j2":            "app/schemas.py",
+            "fastapi_app/app/main.py.j2":               "app/main.py",
+            "fastapi_app/routers/generic_crud.py.j2":   "app/routers/generic_crud.py",
+            "fastapi_app/seed.py.j2":                   "seed.py",
+        }.items():
+            try:
+                tpl = env.get_template(tpl_key)
+                rendered = tpl.render(**jinja_ctx)
+                out_path = out_dir / out_rel
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                out_path.write_text(rendered, encoding="utf-8")
+            except Exception as exc:
+                _log(f"[warn] Jinja2 template {tpl_key}: {exc}")
+
+        # ── Frontend HTML templates (legacy: render all .j2 from templates dir) ──
+        frontend_tpl_src = templates_dir / "fastapi_app" / "frontend_templates"
+        frontend_out_dir = out_dir / "frontend_templates"
+        if frontend_tpl_src.exists():
+            frontend_out_dir.mkdir(parents=True, exist_ok=True)
+            fe_env = _make_env(str(frontend_tpl_src))
+            for tpl_file in sorted(frontend_tpl_src.glob("*.j2")):
+                try:
+                    tpl = fe_env.get_template(tpl_file.name)
+                    rendered = tpl.render(**jinja_ctx)
+                    (frontend_out_dir / tpl_file.name).write_text(rendered, encoding="utf-8")
+                except Exception as exc:
+                    _log(f"[warn] frontend template {tpl_file.name}: {exc}")
+
+    # ─── Auto-copy .env.example → .env ────────────────────────────────────
+    _log("[guard] Writing deterministic route layer, app shell, and smoke tests...")
+    _write_main_routes(out_dir, project_data)
+    _write_frontend_shell(out_dir, project_data, theme)
+    _write_smoke_tests(out_dir)
+
+    env_example = out_dir / ".env.example"
+    env_file    = out_dir / ".env"
+    if env_example.exists() and not env_file.exists():
+        shutil.copy(env_example, env_file)
+
+    # ─── Save artifacts for traceability ──────────────────────────────────
+    artifacts_dir = out_dir / "_builder_artifacts"
+    artifacts_dir.mkdir(exist_ok=True)
+    (artifacts_dir / "project_data.json").write_text(
+        json.dumps(project_data, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+
+    reqs = project_data.get("requirements", {})
+    if reqs:
+        (out_dir / "requirements.json").write_text(
+            json.dumps(reqs, indent=2, ensure_ascii=False), encoding="utf-8"
+        )
+
+    _log(f"[done] Repository generated at: {out_dir}")
+    return GenerateResult(out_dir=str(out_dir), project_slug=project_slug)
+
+
+# ---------------------------------------------------------------------------
+# Public API — called by builder/app.py
+# ---------------------------------------------------------------------------
+def generate_repo(
+    project_id: str,
+    data: dict,
+    ask_llm_fn: Optional[Callable] = None,
+    progress_callback: Optional[Callable[[str], None]] = None,
+) -> str:
+    """
+    Public API used by Streamlit app.py.
+
+    Args:
+        project_id:        Unique project identifier.
+        data:              Full project_data dict from session state.
+        ask_llm_fn:        Optional callable matching signature:
+                             ask_llm(system: str, user: str, num_predict: int) -> str
+                           When provided, all business-logic + HTML files are
+                           generated from scratch by the LLM.
+                           When None, falls back to legacy Jinja2 templates.
+        progress_callback: Optional callable(str) for live progress logging.
+
+    Returns:
+        str: absolute path to the generated project directory.
+    """
+    # Ensure generated_apps package is importable (needed for codegen_prompts)
+    _generator_dir = Path(__file__).resolve().parent
+    _gen_apps_dir  = _generator_dir.parent
+    for _p in [str(_gen_apps_dir), str(_generator_dir)]:
+        if _p not in sys.path:
+            sys.path.insert(0, _p)
+
+    repo_root      = Path(__file__).resolve().parents[2]
+    generated_root = repo_root / "generated_apps" / "projects"
+    generated_root.mkdir(parents=True, exist_ok=True)
+
+    result = _generate_repo_internal(
+        project_data=data,
+        generated_root=str(generated_root),
+        project_id=project_id,
+        ask_llm_fn=ask_llm_fn,
+        progress_callback=progress_callback,
+    )
+    return result.out_dir

@@ -1,0 +1,497 @@
+{
+  "project_title": "Personal Notes App",
+  "technology_stack": {
+    "backend": "FastAPI",
+    "database": "SQLite",
+    "orm": "SQLAlchemy",
+    "auth": "JWT",
+    "frontend": "Plain HTML+CSS+JavaScript",
+    "ui_framework": "Bootstrap",
+    "ui_layout": "topnav"
+  },
+  "roles": [
+    "User",
+    "Admin"
+  ],
+  "folder_structure": [
+    "_builder_artifacts/",
+    "alembic/",
+    "alembic/versions/",
+    "app/",
+    "app/routers/",
+    "frontend_templates/",
+    "tests/"
+  ],
+  "main_pages": [
+    {
+      "name": "User Dashboard",
+      "path": "/",
+      "roles": [
+        "User"
+      ],
+      "description": "Main dashboard for users"
+    },
+    {
+      "name": "Admin Dashboard",
+      "path": "/admin/dashboard",
+      "roles": [
+        "Admin"
+      ],
+      "description": "Admin overview"
+    },
+    {
+      "name": "Note List",
+      "path": "/notes",
+      "roles": [
+        "User"
+      ],
+      "description": "List of user notes with role scoping"
+    },
+    {
+      "name": "Create Note",
+      "path": "/notes/new",
+      "roles": [
+        "User"
+      ],
+      "description": "Create new note for users"
+    },
+    {
+      "name": "Edit Note",
+      "path": "/notes/view/edit",
+      "roles": [
+        "User"
+      ],
+      "description": "Edit existing note for users"
+    },
+    {
+      "name": "Delete Note",
+      "path": "/notes/view/delete",
+      "roles": [
+        "User"
+      ],
+      "description": "Delete own notes for users"
+    },
+    {
+      "name": "Shared Notes",
+      "path": "/shared-notes",
+      "roles": [
+        "User"
+      ],
+      "description": "List of shared notes for users"
+    },
+    {
+      "name": "Manage User Accounts",
+      "path": "/users",
+      "roles": [
+        "User"
+      ],
+      "description": "Manage user accounts for admins"
+    },
+    {
+      "name": "Assign Roles to Users",
+      "path": "/admin/roles",
+      "roles": [
+        "Admin"
+      ],
+      "description": "Assign roles to users for admins"
+    }
+  ],
+  "backend_routes": [
+    {
+      "method": "POST",
+      "path": "/api/auth/register",
+      "purpose": "User registration"
+    },
+    {
+      "method": "POST",
+      "path": "/api/auth/login",
+      "purpose": "User login"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/me",
+      "purpose": "Get current user"
+    },
+    {
+      "method": "GET",
+      "path": "/api/users",
+      "purpose": "List all User"
+    },
+    {
+      "method": "POST",
+      "path": "/api/users",
+      "purpose": "Create User"
+    },
+    {
+      "method": "GET",
+      "path": "/api/users/{id}",
+      "purpose": "Get User by ID"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/users/{id}",
+      "purpose": "Update User"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/users/{id}",
+      "purpose": "Delete User"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notes",
+      "purpose": "List all Note"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notes",
+      "purpose": "Create Note"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notes/{id}",
+      "purpose": "Get Note by ID"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/notes/{id}",
+      "purpose": "Update Note"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/notes/{id}",
+      "purpose": "Delete Note"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roles",
+      "purpose": "List all Role"
+    },
+    {
+      "method": "POST",
+      "path": "/api/roles",
+      "purpose": "Create Role"
+    },
+    {
+      "method": "GET",
+      "path": "/api/roles/{id}",
+      "purpose": "Get Role by ID"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/roles/{id}",
+      "purpose": "Update Role"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/roles/{id}",
+      "purpose": "Delete Role"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/notes",
+      "purpose": "List notes with role scoping"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/notes",
+      "purpose": "Create new note for users"
+    },
+    {
+      "method": "GET",
+      "path": "/api/v1/users",
+      "purpose": "List user accounts for admins"
+    },
+    {
+      "method": "POST",
+      "path": "/api/v1/roles",
+      "purpose": "Assign roles to users for admins"
+    }
+  ],
+  "database_tables": [
+    {
+      "entity": "User",
+      "table_name": "users",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "unique": false,
+          "primary_key": true
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "nullable": true,
+          "unique": true,
+          "primary_key": false
+        },
+        {
+          "name": "password_hash",
+          "type": "string",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "full_name",
+          "type": "string",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        }
+      ]
+    },
+    {
+      "entity": "Note",
+      "table_name": "notes",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "unique": false,
+          "primary_key": true
+        },
+        {
+          "name": "title",
+          "type": "string",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "content",
+          "type": "text",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "user_id",
+          "type": "uuid",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        }
+      ]
+    },
+    {
+      "entity": "Role",
+      "table_name": "roles",
+      "fields": [
+        {
+          "name": "id",
+          "type": "uuid",
+          "nullable": false,
+          "unique": false,
+          "primary_key": true
+        },
+        {
+          "name": "role_name",
+          "type": "string",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "created_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        },
+        {
+          "name": "updated_at",
+          "type": "datetime",
+          "nullable": true,
+          "unique": false,
+          "primary_key": false
+        }
+      ]
+    }
+  ],
+  "models_entities": [
+    "User",
+    "Note",
+    "Role"
+  ],
+  "forms_validation": [
+    {
+      "name": "RegistrationForm",
+      "fields": [
+        "email",
+        "password",
+        "full_name"
+      ],
+      "validation": [
+        "email format",
+        "password min 6 chars"
+      ]
+    },
+    {
+      "name": "LoginForm",
+      "fields": [
+        "email",
+        "password"
+      ],
+      "validation": [
+        "email format",
+        "required fields"
+      ]
+    },
+    {
+      "name": "NoteForm",
+      "fields": [
+        "title",
+        "content",
+        "user_id"
+      ],
+      "validation": [
+        "required fields",
+        "type validation"
+      ]
+    },
+    {
+      "name": "RoleForm",
+      "fields": [
+        "role_name"
+      ],
+      "validation": [
+        "required fields",
+        "type validation"
+      ]
+    }
+  ],
+  "frontend_structure": {
+    "layout_type": "topnav",
+    "ui_framework": "Bootstrap",
+    "pages": [
+      "User Dashboard",
+      "Admin Dashboard",
+      "Note List",
+      "Create Note",
+      "Edit Note",
+      "Delete Note",
+      "Shared Notes",
+      "Manage User Accounts",
+      "Assign Roles to Users"
+    ],
+    "components": [
+      "Navigation",
+      "TopNav",
+      "DataTable",
+      "Form",
+      "Modal",
+      "Flash Messages"
+    ]
+  },
+  "test_plan": {
+    "test_framework": "pytest",
+    "test_categories": [
+      {
+        "category": "Health & Smoke Tests",
+        "tests": [
+          "test_health_endpoint",
+          "test_app_starts_successfully"
+        ]
+      },
+      {
+        "category": "Authentication Tests",
+        "tests": [
+          "test_user_registration",
+          "test_user_login",
+          "test_protected_route_requires_auth",
+          "test_invalid_credentials_rejected"
+        ]
+      },
+      {
+        "category": "Note CRUD Tests",
+        "tests": [
+          "test_list_note",
+          "test_create_note",
+          "test_get_note",
+          "test_update_note",
+          "test_delete_note_requires_admin"
+        ]
+      },
+      {
+        "category": "Role CRUD Tests",
+        "tests": [
+          "test_list_role",
+          "test_create_role",
+          "test_get_role",
+          "test_update_role",
+          "test_delete_role_requires_admin"
+        ]
+      },
+      {
+        "category": "User Story Tests",
+        "tests": [
+          "test_user_story_us1",
+          "test_user_story_us2",
+          "test_user_story_us3",
+          "test_user_story_us4",
+          "test_user_story_us5"
+        ]
+      }
+    ],
+    "total_estimated_tests": 21
+  },
+  "run_commands": {
+    "setup": [
+      "python -m venv .venv",
+      ".venv\\Scripts\\activate",
+      "pip install -r requirements.txt",
+      "copy .env.example .env"
+    ],
+    "seed_database": [
+      "python seed.py"
+    ],
+    "run_development": [
+      "uvicorn app.main:app --reload --port 8000"
+    ],
+    "run_tests": [
+      "pytest tests/ -v"
+    ],
+    "run_production": [
+      "uvicorn app.main:app --host 0.0.0.0 --port 8000"
+    ]
+  }
+}

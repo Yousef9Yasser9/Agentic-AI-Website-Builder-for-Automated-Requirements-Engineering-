@@ -1,0 +1,117 @@
+{
+  "project_name": "personal_notes_app",
+  "project_title": "Personal Notes App",
+  "stack": "FastAPI + SQLite + Bootstrap",
+  "description": "Allow users to securely store and organize personal notes while providing administrative control for note management.",
+  "total_files": 27,
+  "files": [
+    {
+      "path": "app/__init__.py",
+      "purpose": "Python package marker for app module"
+    },
+    {
+      "path": "app/main.py",
+      "purpose": "Main FastAPI application entry point with routes"
+    },
+    {
+      "path": "app/models.py",
+      "purpose": "SQLAlchemy database models"
+    },
+    {
+      "path": "app/schemas.py",
+      "purpose": "Pydantic schemas for request/response validation"
+    },
+    {
+      "path": "app/db.py",
+      "purpose": "Database connection and session management"
+    },
+    {
+      "path": "app/auth.py",
+      "purpose": "Authentication utilities (JWT, password hashing)"
+    },
+    {
+      "path": "app/deps.py",
+      "purpose": "FastAPI dependencies (auth, role checks)"
+    },
+    {
+      "path": "app/routers/__init__.py",
+      "purpose": "Python package marker for routers module"
+    },
+    {
+      "path": "app/routers/auth.py",
+      "purpose": "Authentication routes (login, register, me)"
+    },
+    {
+      "path": "app/routers/generic_crud.py",
+      "purpose": "Generic CRUD operations for all entities"
+    },
+    {
+      "path": "frontend_templates/app.html",
+      "purpose": "Main application dashboard and navigation"
+    },
+    {
+      "path": "frontend_templates/login.html",
+      "purpose": "User login page"
+    },
+    {
+      "path": "frontend_templates/register.html",
+      "purpose": "User registration page"
+    },
+    {
+      "path": "frontend_templates/entity_list.html",
+      "purpose": "Generic entity list/table view"
+    },
+    {
+      "path": "frontend_templates/entity_form.html",
+      "purpose": "Generic entity create/edit form"
+    },
+    {
+      "path": "requirements.txt",
+      "purpose": "Python dependencies"
+    },
+    {
+      "path": ".env.example",
+      "purpose": "Environment variables template"
+    },
+    {
+      "path": ".env",
+      "purpose": "Environment variables (auto-generated from .env.example)"
+    },
+    {
+      "path": "seed.py",
+      "purpose": "Database seeding script with sample data"
+    },
+    {
+      "path": "tests/__init__.py",
+      "purpose": "Python package marker for tests module"
+    },
+    {
+      "path": "tests/test_app.py",
+      "purpose": "TDD test suite for the application"
+    },
+    {
+      "path": "README.md",
+      "purpose": "Project documentation and run instructions"
+    },
+    {
+      "path": "alembic.ini",
+      "purpose": "Alembic database migration configuration (optional)"
+    },
+    {
+      "path": "docker-compose.yml",
+      "purpose": "Docker compose configuration (optional)"
+    },
+    {
+      "path": "_builder_artifacts/project_data.json",
+      "purpose": "Complete project planning data for traceability"
+    },
+    {
+      "path": "_builder_artifacts/blueprint.json",
+      "purpose": "Project blueprint used for generation"
+    },
+    {
+      "path": "_builder_artifacts/manifest.json",
+      "purpose": "This file manifest"
+    }
+  ]
+}

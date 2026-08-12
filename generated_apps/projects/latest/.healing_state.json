@@ -1,0 +1,16 @@
+{
+  "project_id": "",
+  "healing_id": "",
+  "created_at": "2026-06-23T18:36:12.987448",
+  "updated_at": "2026-06-23T18:36:22.262299",
+  "current_phase": 0,
+  "current_cycle": 0,
+  "phases": {},
+  "healing_history": [],
+  "backup_count": 0,
+  "files_modified": [],
+  "errors_seen": [],
+  "patterns_matched": [],
+  "confidence": 0.0,
+  "status": "completed"
+}

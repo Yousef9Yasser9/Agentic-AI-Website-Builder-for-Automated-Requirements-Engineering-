@@ -1,0 +1,23 @@
+{
+  "mode": "guarded_project_specific_plain_source",
+  "project_id": "80044552",
+  "files": {
+    "app/__init__.py": "f3201a8e8052aebe7a2ec397fca817094697e008fb88295cc5db2b93767dd678",
+    "app/auth.py": "1ed46c9e23b55a01d8b2009400dc8d18ecffb03843f35fccdbb9ae1752b2342d",
+    "app/db.py": "2c00fbb68c5f435615408f968b765766755a5c3cacfa6b9cd490062ba3ffbccd",
+    "app/deps.py": "678cbe93a83f7b55005b83d85618cd5426bf1b90b7cc315d02e632d1c02f84c8",
+    "app/main.py": "04d799317fbd3213a7e3ca1197c0eecd622e53b1c808e10c77e1fee473a880ed",
+    "app/models.py": "ecfebc675410c6a11030d693efef7563cd0f880bf36f9add9d064dc5b92f5be5",
+    "app/routers/__init__.py": "d483650da6690c7bc729f21cd47fc80b27bfcefb184d0d6dedc69199f5bca02e",
+    "app/routers/auth.py": "a30ba5b30531faa9217fd834a23deecd1e44e5aa5d297f5bbb28c8b8b6ba3e80",
+    "app/routers/generic_crud.py": "e2439152b035ca1c6aadbf1757fe489d71a04a82c06f125e65b2528c6eca08b1",
+    "app/schemas.py": "56e05e483f6009d0591e02a312db46849ff43030f6845f82e2d73d02797bbe16",
+    "frontend_templates/app.html": "ede161f154d01d58aff2c33f247e7c366496c573ff8ccef87badbcd842365c66",
+    "frontend_templates/entity_form.html": "ce9f3ed4cfade7a0afa56e7e8fbb860d4daa9e0b4eaa06c45206008e632a063a",
+    "frontend_templates/entity_list.html": "9a89d3bf68fc66b376418a120bf430ba6aea2545d002d165c4888a0a947ba637",
+    "frontend_templates/index.html": "ede161f154d01d58aff2c33f247e7c366496c573ff8ccef87badbcd842365c66",
+    "frontend_templates/login.html": "4971c10a234dfdb8cebddc2e1e63e59aed2f213110953e174eeab79066652a73",
+    "frontend_templates/register.html": "e579d6f2bbc58af960dea3e65ed148853c32f9ba284e5b189c922aa1da5536e5",
+    "seed.py": "ccd41a68f8cd6c249053c0e01625d5f87021ffd46f4e39917c5e688c8175e09f"
+  }
+}

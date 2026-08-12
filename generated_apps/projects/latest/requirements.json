@@ -1,0 +1,87 @@
+{
+  "project_title": "Personal Notes App",
+  "functional_requirements": [
+    {
+      "id": "FR1",
+      "shall": "The system shall allow User to Create new notes for User to store personal information.",
+      "actor": "User",
+      "priority": "Must"
+    },
+    {
+      "id": "FR2",
+      "shall": "The system shall allow User to Edit existing notes for User to update personal information.",
+      "actor": "User",
+      "priority": "Must"
+    },
+    {
+      "id": "FR3",
+      "shall": "The system shall allow User to Delete own notes for User to remove personal information.",
+      "actor": "User",
+      "priority": "Must"
+    },
+    {
+      "id": "FR4",
+      "shall": "The system shall allow User to View shared notes for User to access shared content.",
+      "actor": "User",
+      "priority": "Should"
+    },
+    {
+      "id": "FR5",
+      "shall": "The system shall allow User to Share own notes with other users for User to collaborate on personal information.",
+      "actor": "User",
+      "priority": "Should"
+    },
+    {
+      "id": "FR6",
+      "shall": "The system shall allow Admin to Manage user accounts for Admin to control access and permissions.",
+      "actor": "Admin",
+      "priority": "Must"
+    },
+    {
+      "id": "FR7",
+      "shall": "The system shall allow Admin to View all notes for Admin to monitor content.",
+      "actor": "Admin",
+      "priority": "Must"
+    },
+    {
+      "id": "FR8",
+      "shall": "The system shall allow Admin to Assign roles to users for Admin to control access and permissions.",
+      "actor": "Admin",
+      "priority": "Must"
+    }
+  ],
+  "non_functional_requirements": [
+    {
+      "id": "NFR1",
+      "shall": "The system shall enforce role-based access control for every protected workflow.",
+      "iso25010": [
+        "Security"
+      ],
+      "priority": "Must"
+    },
+    {
+      "id": "NFR2",
+      "shall": "The system shall ensure data security and integrity through hashed passwords and secure storage.",
+      "iso25010": [
+        "Security"
+      ],
+      "priority": "Must"
+    },
+    {
+      "id": "NFR3",
+      "shall": "The system shall provide a user-friendly interface with pastel color palette, clean typography, and minimalistic layout.",
+      "iso25010": [
+        "Usability"
+      ],
+      "priority": "Should"
+    },
+    {
+      "id": "NFR4",
+      "shall": "The system shall ensure data uniqueness through unique note titles per user.",
+      "iso25010": [
+        "Reliability"
+      ],
+      "priority": "Must"
+    }
+  ]
+}

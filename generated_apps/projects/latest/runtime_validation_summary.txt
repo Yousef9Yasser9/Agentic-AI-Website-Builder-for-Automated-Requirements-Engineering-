@@ -1,0 +1,29 @@
+Runtime Validation Summary
+==========================
+
+Final status: PASSED
+
+Page tests:
+  total: 15
+  passed: 15
+  failed: 0
+
+Button/navigation/form tests:
+  total: 11
+  passed: 11
+  failed: 0
+
+Database tests:
+  total: 15
+  passed: 15
+  failed: 0
+
+Role-based tests:
+  total: 4
+  passed: 4
+  failed: 0
+
+Repair attempts used: 0
+
+Contract validation: PASSED
+Contract issues: 0
